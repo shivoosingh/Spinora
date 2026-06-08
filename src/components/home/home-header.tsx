@@ -20,11 +20,9 @@ export function HomeHeader({ onSearchClick, onMenuClick }: HomeHeaderProps) {
     const supabase = createClient();
     if (!supabase) return;
 
-    async function checkAuth() {
-      const { data: { user } } = await supabase.auth.getUser();
+    void supabase.auth.getUser().then(({ data: { user } }) => {
       setIsLoggedIn(!!user);
-    }
-    checkAuth();
+    });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setIsLoggedIn(!!session?.user);
