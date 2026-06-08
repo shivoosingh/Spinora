@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -9,7 +8,6 @@ import {
   LayoutDashboard,
   Gamepad2,
   MessageSquare,
-  Bell,
   Crown,
   Users,
   Shield,
@@ -19,16 +17,17 @@ import {
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SITE_NAME } from "@/lib/constants";
+import { AnimatedLogo, AnimatedLogoText } from "@/components/ui/animated-logo";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { NotificationDropdown } from "@/components/notifications/notification-dropdown";
+import { WalletCardLoader } from "@/components/wallet/wallet-card-loader";
 
 const userLinks = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
   { href: "/dashboard/requests", label: "Game Requests", icon: Gamepad2 },
   { href: "/dashboard/messages", label: "Messages", icon: MessageSquare },
-  { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
   { href: "/dashboard/vip", label: "VIP Status", icon: Crown },
   { href: "/dashboard/referrals", label: "Referrals", icon: Users },
 ];
@@ -121,7 +120,7 @@ export function DashboardNav({ isAdmin = false }: DashboardNavProps) {
 
   async function handleLogout() {
     const supabase = createClient();
-    await supabase.auth.signOut();
+    if (supabase) await supabase.auth.signOut();
     router.push("/");
     router.refresh();
   }
@@ -130,18 +129,18 @@ export function DashboardNav({ isAdmin = false }: DashboardNavProps) {
     <>
       {/* Mobile top bar */}
       <header className="lg:hidden fixed top-0 left-0 right-0 z-40 glass border-b border-border h-14 flex items-center justify-between px-4">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <Image src="/logo.jpeg" alt={SITE_NAME} width={28} height={28} className="rounded-lg" />
-          <span className="font-bold gradient-text text-sm">{SITE_NAME}</span>
-        </Link>
-        <button
-          type="button"
-          onClick={() => setMobileOpen(true)}
-          className="p-2 rounded-lg hover:bg-muted"
-          aria-label="Open menu"
-        >
-          <Menu className="h-5 w-5" />
-        </button>
+        <AnimatedLogo imageSize={28} textClassName="text-sm" href="/dashboard" />
+        <div className="flex items-center gap-1">
+          <NotificationDropdown buttonClassName="bg-transparent border-transparent hover:bg-muted" />
+          <button
+            type="button"
+            onClick={() => setMobileOpen(true)}
+            className="p-2 rounded-lg hover:bg-muted"
+            aria-label="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+        </div>
       </header>
 
       {/* Mobile drawer */}
@@ -163,7 +162,7 @@ export function DashboardNav({ isAdmin = false }: DashboardNavProps) {
               className="lg:hidden fixed left-0 top-0 bottom-0 z-50 w-72 glass border-r border-border flex flex-col"
             >
               <div className="p-4 border-b border-border flex items-center justify-between">
-                <span className="font-bold gradient-text">{SITE_NAME}</span>
+                <AnimatedLogoText textClassName="text-base" />
                 <button type="button" onClick={() => setMobileOpen(false)} aria-label="Close menu">
                   <X className="h-5 w-5" />
                 </button>
@@ -187,12 +186,13 @@ export function DashboardNav({ isAdmin = false }: DashboardNavProps) {
       </AnimatePresence>
 
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex w-64 flex-col glass border-r border-border min-h-screen">
-        <div className="p-4 border-b border-border">
-          <Link href="/" className="flex items-center gap-2">
-            <Image src="/logo.jpeg" alt={SITE_NAME} width={32} height={32} className="rounded-lg" />
-            <span className="font-bold gradient-text">{SITE_NAME}</span>
-          </Link>
+      <aside className="hidden lg:flex w-64 flex-col glass border-r border-border min-h-screen relative z-30">
+        <div className="p-4 border-b border-border flex flex-col gap-3 overflow-visible">
+          <div className="flex items-center justify-between gap-2">
+            <AnimatedLogo imageSize={32} textClassName="text-sm" className="min-w-0" href="/" />
+            <NotificationDropdown align="right" buttonClassName="bg-muted/50 border-border shrink-0" />
+          </div>
+          <WalletCardLoader />
         </div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           <NavLinks pathname={pathname} isAdmin={isAdmin} />

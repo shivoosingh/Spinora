@@ -2,7 +2,44 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { GAMES } from "@/lib/games";
 import type { RequestStatus } from "@/types/database";
+
+export async function createGameRequestBySlug(slug: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const game = GAMES.find((g) => g.slug === slug);
+  if (!game) return { error: "Game not found" };
+  if (game.upcoming) return { error: "This game is coming soon" };
+
+  const { data: existing } = await supabase
+    .from("game_requests")
+    .select("id, status")
+    .eq("user_id", user.id)
+    .eq("game_name", game.name)
+    .in("status", ["pending", "processing"])
+    .maybeSingle();
+
+  if (existing) {
+    return {
+      error: `You already have a ${existing.status} request for ${game.name}`,
+    };
+  }
+
+  const { error } = await supabase.from("game_requests").insert({
+    user_id: user.id,
+    game_name: game.name,
+    game_provider: game.provider,
+    notes: null,
+  });
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/dashboard/requests");
+  return { success: true, gameName: game.name };
+}
 
 export async function createGameRequest(formData: FormData) {
   const supabase = await createClient();

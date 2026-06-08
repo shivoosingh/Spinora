@@ -1,12 +1,15 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageCircle, X, Send, Minimize2 } from "lucide-react";
+import { MessageCircle, X, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { createClient } from "@/lib/supabase/client";
+import { uploadChatAttachment } from "@/lib/chat/attachments";
+import { ChatComposer } from "@/components/chat/chat-composer";
+import { ChatMessageContent } from "@/components/chat/chat-message-content";
 import { formatRelativeTime } from "@/lib/utils";
+import { toast } from "sonner";
 import type { Message } from "@/types/database";
 
 export function ChatWidget() {
@@ -17,9 +20,10 @@ export function ChatWidget() {
   const [userId, setUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const initChat = useCallback(async () => {
+    if (!supabase) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     setUserId(user.id);
@@ -52,11 +56,11 @@ export function ChatWidget() {
   }, [supabase]);
 
   useEffect(() => {
-    if (open) initChat();
-  }, [open, initChat]);
+    if (open && supabase) initChat();
+  }, [open, initChat, supabase]);
 
   useEffect(() => {
-    if (!conversationId) return;
+    if (!conversationId || !supabase) return;
 
     const channel = supabase
       .channel(`chat-${conversationId}`)
@@ -76,21 +80,55 @@ export function ChatWidget() {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  async function sendMessage(e: React.FormEvent) {
-    e.preventDefault();
-    if (!input.trim() || !conversationId || !userId) return;
+  async function handleSend(file: File | null): Promise<boolean> {
+    if ((!input.trim() && !file) || !conversationId || !userId) return false;
+    if (!supabase) {
+      toast.error("Chat is unavailable. Check your connection.");
+      return false;
+    }
 
     setLoading(true);
     const content = input.trim();
     setInput("");
 
-    await supabase.from("messages").insert({
+    let attachment:
+      | { url: string; type: "image" | "file"; name: string }
+      | undefined;
+
+    if (file) {
+      const uploadResult = await uploadChatAttachment(supabase, conversationId, file);
+      if ("error" in uploadResult) {
+        toast.error(uploadResult.error);
+        setInput(content);
+        setLoading(false);
+        return false;
+      }
+      attachment = uploadResult.data;
+    }
+
+    const { error } = await supabase.from("messages").insert({
       conversation_id: conversationId,
       sender_id: userId,
-      content,
+      content: content || "",
+      ...(attachment && {
+        attachment_url: attachment.url,
+        attachment_type: attachment.type,
+        attachment_name: attachment.name,
+      }),
     });
 
+    if (error) {
+      const hint = error.message.includes("attachment_")
+        ? " Run supabase/chat-attachments.sql in Supabase first."
+        : "";
+      toast.error(`${error.message}${hint}`);
+      setInput(content);
+      setLoading(false);
+      return false;
+    }
+
     setLoading(false);
+    return true;
   }
 
   return (
@@ -119,7 +157,9 @@ export function ChatWidget() {
             </div>
 
             <div ref={scrollRef} className="h-72 overflow-y-auto p-4 space-y-3">
-              {!userId ? (
+              {!supabase ? (
+                <p className="text-sm text-muted-foreground text-center py-8">Chat unavailable</p>
+              ) : !userId ? (
                 <div className="text-center py-8">
                   <p className="text-sm text-muted-foreground mb-3">Please log in to start chatting</p>
                   <Button size="sm" asChild>
@@ -143,7 +183,7 @@ export function ChatWidget() {
                           : "bg-muted text-foreground"
                       }`}
                     >
-                      <p>{msg.content}</p>
+                      <ChatMessageContent message={msg} />
                       <p className="text-[10px] opacity-60 mt-1">{formatRelativeTime(msg.created_at)}</p>
                     </div>
                   </div>
@@ -151,19 +191,14 @@ export function ChatWidget() {
               )}
             </div>
 
-            {userId && (
-              <form onSubmit={sendMessage} className="p-3 border-t border-border flex gap-2">
-                <Input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder="Type a message..."
-                  disabled={loading}
-                  className="flex-1"
-                />
-                <Button type="submit" size="icon" disabled={loading || !input.trim()}>
-                  <Send className="h-4 w-4" />
-                </Button>
-              </form>
+            {userId && supabase && (
+              <ChatComposer
+                value={input}
+                onChange={setInput}
+                onSend={handleSend}
+                loading={loading}
+                placeholder="Type a message..."
+              />
             )}
           </motion.div>
         )}

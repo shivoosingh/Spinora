@@ -19,6 +19,11 @@ export default function ResetPasswordPage() {
     setLoading(true);
 
     const supabase = createClient();
+    if (!supabase) {
+      toast.error("Authentication is not configured");
+      setLoading(false);
+      return;
+    }
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/login`,
     });

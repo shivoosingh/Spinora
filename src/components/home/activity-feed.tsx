@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Gamepad2, Crown, UserPlus } from "lucide-react";
+import { LiveBadge } from "@/components/ui/LiveBadge";
 import { formatRelativeTime } from "@/lib/utils";
 
 const activities = [
@@ -22,9 +23,12 @@ export function ActivityFeed() {
           viewport={{ once: true }}
           className="text-center mb-12"
         >
-          <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-            Recent <span className="gradient-text">Activity</span>
-          </h2>
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <h2 className="text-3xl sm:text-4xl font-bold">
+              Recent <span className="gradient-text">Activity</span>
+            </h2>
+            <LiveBadge />
+          </div>
           <p className="text-muted-foreground">Live updates from the Spinora community</p>
         </motion.div>
 

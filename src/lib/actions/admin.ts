@@ -49,7 +49,15 @@ export async function suspendUser(userId: string, suspended: boolean) {
   return { success: true };
 }
 
-export async function sendAdminMessage(conversationId: string, content: string) {
+export async function sendAdminMessage(
+  conversationId: string,
+  content: string,
+  attachment?: {
+    url: string;
+    type: "image" | "file";
+    name: string;
+  }
+) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
@@ -62,13 +70,27 @@ export async function sendAdminMessage(conversationId: string, content: string) 
 
   if (profile?.role !== "admin") return { error: "Unauthorized" };
 
+  if (!content.trim() && !attachment) {
+    return { error: "Message cannot be empty" };
+  }
+
   const { error } = await supabase.from("messages").insert({
     conversation_id: conversationId,
     sender_id: user.id,
-    content,
+    content: content.trim(),
+    ...(attachment && {
+      attachment_url: attachment.url,
+      attachment_type: attachment.type,
+      attachment_name: attachment.name,
+    }),
   });
 
-  if (error) return { error: error.message };
+  if (error) {
+    const hint = error.message.includes("attachment_")
+      ? " Run supabase/chat-attachments.sql in Supabase SQL Editor first."
+      : "";
+    return { error: `${error.message}${hint}` };
+  }
 
   await supabase
     .from("conversations")

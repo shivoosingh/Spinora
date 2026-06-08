@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Menu, X, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SITE_NAME } from "@/lib/constants";
+import { AnimatedLogo } from "@/components/ui/animated-logo";
 
 const navLinks = [
+  { href: "/#games", label: "Games" },
+  { href: "/spin", label: "Spin Wheel" },
   { href: "/promotions", label: "Promotions" },
   { href: "/vip", label: "VIP" },
   { href: "/about", label: "About" },
@@ -21,10 +22,7 @@ export function Navbar() {
   return (
     <header className="fixed top-0 left-0 right-0 z-50 glass">
       <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2">
-          <Image src="/logo.jpeg" alt={SITE_NAME} width={36} height={36} className="rounded-lg" priority />
-          <span className="text-lg font-bold gradient-text hidden sm:block">{SITE_NAME}</span>
-        </Link>
+        <AnimatedLogo textClassName="text-lg" />
 
         <div className="hidden md:flex items-center gap-8">
           {navLinks.map((link) => (

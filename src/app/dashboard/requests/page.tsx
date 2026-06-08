@@ -1,7 +1,9 @@
+import { Suspense } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { GameRequestForm } from "@/components/dashboard/game-request-form";
+import { GameRequestFromUrl } from "@/components/dashboard/game-request-from-url";
 import { formatDate } from "@/lib/utils";
 import type { RequestStatus } from "@/types/database";
 
@@ -24,6 +26,9 @@ export default async function RequestsPage() {
 
   return (
     <div>
+      <Suspense fallback={null}>
+        <GameRequestFromUrl />
+      </Suspense>
       <div className="mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold">Game Requests</h1>
         <p className="text-muted-foreground">Request and track your game accounts</p>

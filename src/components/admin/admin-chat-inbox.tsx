@@ -1,15 +1,17 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { sendAdminMessage } from "@/lib/actions/admin";
+import { uploadChatAttachment } from "@/lib/chat/attachments";
+import { ChatComposer } from "@/components/chat/chat-composer";
+import { ChatMessageContent } from "@/components/chat/chat-message-content";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
-import { ArrowLeft, MessageCircle, Send } from "lucide-react";
+import { ArrowLeft, MessageCircle } from "lucide-react";
 import type { Message } from "@/types/database";
 
 interface ConversationUser {
@@ -38,12 +40,13 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
   const [loading, setLoading] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   const selected = conversations.find((c) => c.id === selectedId);
 
   const loadMessages = useCallback(
     async (conversationId: string) => {
+      if (!supabase) return;
       const { data } = await supabase
         .from("messages")
         .select("*")
@@ -62,11 +65,12 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
   );
 
   useEffect(() => {
+    if (!supabase) return;
     supabase.auth.getUser().then(({ data }) => setAdminId(data.user?.id ?? null));
   }, [supabase]);
 
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || !supabase) return;
     loadMessages(selectedId);
 
     const channel = supabase
@@ -100,23 +104,48 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
     setMobileChatOpen(true);
   }
 
-  async function handleSend(e: React.FormEvent) {
-    e.preventDefault();
-    if (!input.trim() || !selectedId) return;
+  async function handleSend(file: File | null): Promise<boolean> {
+    if ((!input.trim() && !file) || !selectedId) return false;
+    if (!supabase) {
+      toast.error("Chat is unavailable. Check your connection.");
+      return false;
+    }
 
     setLoading(true);
-    const result = await sendAdminMessage(selectedId, input.trim());
+    const content = input.trim();
+    setInput("");
+
+    let attachment:
+      | { url: string; type: "image" | "file"; name: string }
+      | undefined;
+
+    if (file) {
+      const uploadResult = await uploadChatAttachment(supabase, selectedId, file);
+      if ("error" in uploadResult) {
+        toast.error(uploadResult.error);
+        setInput(content);
+        setLoading(false);
+        return false;
+      }
+      attachment = uploadResult.data;
+    }
+
+    const result = await sendAdminMessage(selectedId, content, attachment);
     if (result.error) {
       toast.error(result.error);
-    } else {
-      setInput("");
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === selectedId ? { ...c, updated_at: new Date().toISOString() } : c
-        )
-      );
+      setInput(content);
+      setLoading(false);
+      return false;
     }
+
+    await loadMessages(selectedId);
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === selectedId ? { ...c, updated_at: new Date().toISOString() } : c
+      )
+    );
     setLoading(false);
+    return true;
   }
 
   if (conversations.length === 0) {
@@ -134,7 +163,6 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
   return (
     <Card className="overflow-hidden">
       <div className="grid grid-cols-1 md:grid-cols-3 min-h-[70vh]">
-        {/* Conversation list */}
         <div
           className={cn(
             "border-r border-border flex flex-col",
@@ -180,7 +208,6 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
           </div>
         </div>
 
-        {/* Chat panel */}
         <div
           className={cn(
             "md:col-span-2 flex flex-col",
@@ -231,7 +258,7 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
                       {!isAdmin && (
                         <p className="text-[10px] font-semibold opacity-70 mb-0.5">Customer</p>
                       )}
-                      <p>{msg.content}</p>
+                      <ChatMessageContent message={msg} />
                       <p className="text-[10px] opacity-60 mt-1">
                         {formatRelativeTime(msg.created_at)}
                       </p>
@@ -242,19 +269,15 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
             )}
           </div>
 
-          <form onSubmit={handleSend} className="p-4 border-t border-border flex gap-2">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Type your reply to the customer..."
-              disabled={loading || !selectedId}
-              className="flex-1"
-            />
-            <Button type="submit" disabled={loading || !input.trim() || !selectedId}>
-              <Send className="h-4 w-4" />
-              <span className="hidden sm:inline">Send</span>
-            </Button>
-          </form>
+          <ChatComposer
+            value={input}
+            onChange={setInput}
+            onSend={handleSend}
+            loading={loading}
+            disabled={!selectedId}
+            placeholder="Type your reply to the customer..."
+            showSendLabel
+          />
         </div>
       </div>
     </Card>

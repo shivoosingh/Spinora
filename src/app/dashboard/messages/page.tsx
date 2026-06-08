@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChatMessageContent } from "@/components/chat/chat-message-content";
 import { MessageCircle } from "lucide-react";
 
 export default async function MessagesPage() {
@@ -48,7 +49,7 @@ export default async function MessagesPage() {
                           {sender?.role === "admin" ? "Support" : sender?.full_name}
                         </p>
                       )}
-                      <p className="text-sm">{msg.content}</p>
+                      <ChatMessageContent message={msg} />
                     </div>
                   </div>
                 );

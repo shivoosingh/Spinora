@@ -10,6 +10,8 @@ export interface Profile {
   role: UserRole;
   vip_tier: VipTier;
   vip_points: number;
+  wallet_balance: number;
+  bonus_wallet: number;
   referral_code: string;
   referred_by: string | null;
   is_suspended: boolean;
@@ -31,11 +33,16 @@ export interface GameRequest {
   updated_at: string;
 }
 
+export type MessageAttachmentType = "image" | "file";
+
 export interface Message {
   id: string;
   conversation_id: string;
   sender_id: string;
   content: string;
+  attachment_url: string | null;
+  attachment_type: MessageAttachmentType | null;
+  attachment_name: string | null;
   is_read: boolean;
   created_at: string;
 }

@@ -47,6 +47,15 @@ export const PUBLIC_ROUTES = [
   { path: "/vip", priority: 0.9 },
   { path: "/about", priority: 0.8 },
   { path: "/support", priority: 0.8 },
+  { path: "/spin", priority: 0.85 },
   { path: "/login", priority: 0.5 },
   { path: "/register", priority: 0.5 },
 ] as const;
+
+/** Update these with your real social profile URLs */
+export const SOCIAL_LINKS = {
+  telegram: process.env.NEXT_PUBLIC_TELEGRAM_URL || "https://t.me/spinora",
+  facebook: process.env.NEXT_PUBLIC_FACEBOOK_URL || "https://facebook.com/spinora",
+  whatsapp: process.env.NEXT_PUBLIC_WHATSAPP_URL || "https://wa.me/1234567890",
+  instagram: process.env.NEXT_PUBLIC_INSTAGRAM_URL || "https://instagram.com/spinora",
+} as const;
