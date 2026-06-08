@@ -7,14 +7,11 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/server";
 import { getAuthUser, getProfile } from "@/lib/supabase/session";
-import { WalletCard } from "@/components/wallet/wallet-card";
-import { getMyWallet } from "@/lib/actions/wallet";
 
 export default async function DashboardPage() {
   const user = await getAuthUser();
   const profile = await getProfile();
   const supabase = await createClient();
-  const wallet = await getMyWallet();
 
   const [{ count: requestCount }, { count: referralCount }, { count: notifCount }] =
     await Promise.all([
@@ -41,20 +38,11 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <div className="mb-8 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">
-            Welcome back, {profile?.full_name || "Player"}
-          </h1>
-          <p className="text-muted-foreground">Here&apos;s your account overview</p>
-        </div>
-        {!("error" in wallet) && (
-          <WalletCard
-            walletBalance={wallet.walletBalance}
-            bonusWallet={wallet.bonusWallet}
-            className="w-full max-w-xs shrink-0"
-          />
-        )}
+      <div className="mb-8">
+        <h1 className="text-2xl sm:text-3xl font-bold">
+          Welcome back, {profile?.full_name || "Player"}
+        </h1>
+        <p className="text-muted-foreground">Here&apos;s your account overview</p>
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">

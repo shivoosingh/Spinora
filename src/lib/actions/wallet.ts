@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createNotification } from "@/lib/actions/notifications";
 
 export interface WalletBalance {
   walletBalance: number;
@@ -142,14 +143,13 @@ export async function adminGrantWallet(
   );
 
   if (result.success) {
-    const supabase = await createClient();
     const label = walletType === "bonus" ? "Bonus Wallet" : "Current Wallet";
-    await supabase.from("notifications").insert({
-      user_id: userId,
-      title: "Wallet Updated",
-      message: `$${amount} was added to your ${label} by an admin.`,
-      type: "success",
-    });
+    await createNotification(
+      userId,
+      "Wallet Updated",
+      `$${amount} was added to your ${label} by an admin.`,
+      "success"
+    );
   }
 
   return result;

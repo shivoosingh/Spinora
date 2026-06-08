@@ -6,6 +6,9 @@ import { MessageCircle, X, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { uploadChatAttachment } from "@/lib/chat/attachments";
+import { sendUserMessage, markConversationRead } from "@/lib/actions/messages";
+import { useUnreadMessages } from "@/hooks/use-unread-messages";
+import { UnreadBadge } from "@/components/ui/unread-badge";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatMessageContent } from "@/components/chat/chat-message-content";
 import { formatRelativeTime } from "@/lib/utils";
@@ -21,6 +24,7 @@ export function ChatWidget() {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const supabase = useMemo(() => createClient(), []);
+  const { count: unreadCount, refresh: refreshUnread } = useUnreadMessages();
 
   const initChat = useCallback(async () => {
     if (!supabase) return;
@@ -56,8 +60,16 @@ export function ChatWidget() {
   }, [supabase]);
 
   useEffect(() => {
-    if (open && supabase) initChat();
+    if (open && supabase) {
+      void initChat();
+    }
   }, [open, initChat, supabase]);
+
+  useEffect(() => {
+    if (open && conversationId) {
+      void markConversationRead(conversationId).then(() => refreshUnread());
+    }
+  }, [open, conversationId, refreshUnread]);
 
   useEffect(() => {
     if (!conversationId || !supabase) return;
@@ -106,26 +118,21 @@ export function ChatWidget() {
       attachment = uploadResult.data;
     }
 
-    const { error } = await supabase.from("messages").insert({
-      conversation_id: conversationId,
-      sender_id: userId,
-      content: content || "",
-      ...(attachment && {
-        attachment_url: attachment.url,
-        attachment_type: attachment.type,
-        attachment_name: attachment.name,
-      }),
-    });
+    const result = await sendUserMessage(conversationId, content, attachment);
 
-    if (error) {
-      const hint = error.message.includes("attachment_")
-        ? " Run supabase/chat-attachments.sql in Supabase first."
-        : "";
-      toast.error(`${error.message}${hint}`);
+    if (result.error) {
+      toast.error(result.error);
       setInput(content);
       setLoading(false);
       return false;
     }
+
+    const { data: msgs } = await supabase
+      .from("messages")
+      .select("*")
+      .eq("conversation_id", conversationId)
+      .order("created_at", { ascending: true });
+    if (msgs) setMessages(msgs);
 
     setLoading(false);
     return true;
@@ -208,10 +215,15 @@ export function ChatWidget() {
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setOpen(!open)}
-        className="fixed bottom-6 right-4 z-50 w-14 h-14 rounded-full gradient-bg flex items-center justify-center shadow-lg glow-purple"
+        className="fixed bottom-6 right-4 z-50 w-14 h-14 rounded-full gradient-bg flex items-center justify-center shadow-lg glow-purple relative"
         aria-label="Open chat"
       >
         {open ? <X className="h-6 w-6 text-white" /> : <MessageCircle className="h-6 w-6 text-white" />}
+        {!open && unreadCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5">
+            <UnreadBadge count={unreadCount} className="ring-2 ring-[#121212]" />
+          </span>
+        )}
       </motion.button>
     </>
   );

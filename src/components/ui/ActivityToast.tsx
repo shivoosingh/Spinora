@@ -1,41 +1,107 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { GAMES } from "@/lib/games";
 
-const ACTIVITIES = [
-  { emoji: "🎮", user: "Alex M.", action: "just requested Fire Kirin account" },
-  { emoji: "🏆", user: "Diana L.", action: "reached Gold VIP" },
-  { emoji: "💰", user: "Chris P.", action: "earned +100 referral pts" },
-  { emoji: "🎰", user: "Emma W.", action: "set up Juwa account" },
-  { emoji: "💎", user: "Ryan B.", action: "upgraded to Platinum VIP" },
-  { emoji: "🎁", user: "Marco T.", action: "claimed $50 bonus" },
+interface Activity {
+  emoji: string;
+  user: string;
+  action: string;
+}
+
+const FIRST_NAMES = [
+  "Alex", "Diana", "Chris", "Emma", "Ryan", "Marco", "Lisa", "James", "Priya", "Noah",
+  "Sofia", "Ethan", "Mia", "Lucas", "Ava", "Omar", "Nina", "Tyler", "Zara", "Kevin",
+  "Hannah", "Diego", "Chloe", "Brandon", "Yuki", "Marcus", "Leila", "Jordan", "Anika", "Victor",
+  "Rosa", "Derek", "Mei", "Andre", "Kira", "Samuel", "Fatima", "Logan", "Elena", "Raj",
 ];
 
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function randomAmount(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function shuffle<T>(arr: T[]): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function buildActivity(name: string): Activity {
+  const game = pick(GAMES).name;
+  const templates: { emoji: string; action: string }[] = [
+    { emoji: "🎮", action: `requested ${game} account` },
+    { emoji: "🎰", action: `won $${randomAmount(40, 320)} on ${game}` },
+    { emoji: "🏆", action: `reached ${pick(["Silver", "Gold", "Platinum"])} VIP` },
+    { emoji: "💰", action: `earned +${randomAmount(50, 300)} referral pts` },
+    { emoji: "💎", action: `claimed $${randomAmount(10, 100)} bonus` },
+    { emoji: "🔥", action: `hit a ${randomAmount(2, 8)}x win on ${game}` },
+    { emoji: "⭐", action: `spun the wheel on ${game}` },
+    { emoji: "🎁", action: `unlocked promo on ${game}` },
+    { emoji: "🪙", action: `deposited $${randomAmount(20, 200)}` },
+    { emoji: "🎯", action: `joined via referral — +${randomAmount(50, 150)} pts` },
+  ];
+  const t = pick(templates);
+  const lastInitial = String.fromCharCode(65 + Math.floor(Math.random() * 26));
+  return {
+    emoji: t.emoji,
+    user: `${name} ${lastInitial}.`,
+    action: t.action,
+  };
+}
+
+function generateActivityPool(size: number): Activity[] {
+  const names = shuffle(FIRST_NAMES).slice(0, Math.min(size, FIRST_NAMES.length));
+  const pool = names.map((name) => buildActivity(name));
+
+  while (pool.length < size) {
+    pool.push(buildActivity(pick(FIRST_NAMES)));
+  }
+
+  return shuffle(pool);
+}
+
+const POOL_SIZE = 36;
+
 export function ActivityToast() {
-  const [index, setIndex] = useState(0);
-  const [visible, setVisible] = useState(true);
+  const [activities, setActivities] = useState<Activity[]>(() => generateActivityPool(POOL_SIZE));
+  const [index, setIndex] = useState(() => Math.floor(Math.random() * POOL_SIZE));
   const [animating, setAnimating] = useState<"in" | "out">("in");
+
+  const advance = useCallback(() => {
+    setIndex((i) => {
+      const next = i + 1;
+      if (next >= activities.length) {
+        setActivities(generateActivityPool(POOL_SIZE));
+        return 0;
+      }
+      return next;
+    });
+  }, [activities.length]);
 
   useEffect(() => {
     const cycle = setInterval(() => {
       setAnimating("out");
       setTimeout(() => {
-        setIndex((i) => (i + 1) % ACTIVITIES.length);
+        advance();
         setAnimating("in");
-        setVisible(true);
       }, 400);
-    }, 4000);
+    }, 4500);
 
     return () => clearInterval(cycle);
-  }, []);
+  }, [advance]);
 
-  if (!visible) return null;
-
-  const activity = ACTIVITIES[index];
+  const activity = activities[index] ?? activities[0];
 
   return (
     <div
-      className={`activity-toast fixed bottom-6 left-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl border border-purple-500/30 shadow-xl max-w-xs sm:max-w-sm ${
+      className={`activity-toast fixed top-[6.25rem] right-4 sm:right-6 z-[35] flex items-center gap-3 px-4 py-2.5 rounded-xl border border-purple-500/30 shadow-xl max-w-[min(100vw-2rem,20rem)] ${
         animating === "in" ? "toast-animate-in" : "toast-animate-out"
       }`}
       style={{ background: "rgba(13,3,24,0.92)", backdropFilter: "blur(12px)" }}

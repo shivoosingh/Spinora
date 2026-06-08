@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createNotification } from "@/lib/actions/notifications";
 import { WHEEL_PRIZES, DAILY_SPINS_BY_TIER, pickWeightedPrize } from "@/lib/spin/prizes";
 import { creditUserWallet } from "@/lib/actions/wallet";
 
@@ -119,12 +120,12 @@ export async function spinWheel(): Promise<SpinResult> {
       `Wheel prize: ${prize.label}`
     );
 
-    await supabase.from("notifications").insert({
-      user_id: user.id,
-      title: "Wheel Prize Won!",
-      message: `You won ${prize.label}! $${prize.value} added to your Bonus Wallet and +${pointsToAdd} VIP points.`,
-      type: "success",
-    });
+    await createNotification(
+      user.id,
+      "Wheel Prize Won!",
+      `You won ${prize.label}! $${prize.value} added to your Bonus Wallet and +${pointsToAdd} VIP points.`,
+      "success"
+    );
   }
 
   revalidatePath("/spin");

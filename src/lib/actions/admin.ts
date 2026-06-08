@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createNotification } from "@/lib/actions/notifications";
 
 export async function updateUserRole(userId: string, role: "user" | "admin") {
   const supabase = await createClient();
@@ -90,6 +91,24 @@ export async function sendAdminMessage(
       ? " Run supabase/chat-attachments.sql in Supabase SQL Editor first."
       : "";
     return { error: `${error.message}${hint}` };
+  }
+
+  const { data: conversation } = await supabase
+    .from("conversations")
+    .select("user_id")
+    .eq("id", conversationId)
+    .single();
+
+  if (conversation?.user_id) {
+    const preview =
+      content.trim() ||
+      (attachment?.type === "image" ? "Sent you an image" : attachment ? "Sent you a file" : "Sent you a message");
+    await createNotification(
+      conversation.user_id,
+      "New message from Support",
+      preview.length > 140 ? `${preview.slice(0, 137)}...` : preview,
+      "info"
+    );
   }
 
   await supabase

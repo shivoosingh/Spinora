@@ -48,7 +48,7 @@ function RegisterForm() {
     }
 
     toast.success("Account created! Welcome to Spinora.");
-    router.push("/dashboard");
+    router.push("/");
     router.refresh();
   }
 

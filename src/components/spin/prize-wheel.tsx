@@ -158,17 +158,31 @@ export function PrizeWheel({
                     className="absolute flex flex-col items-center justify-center gap-1 text-center"
                     style={{
                       transform: `translate(-50%, calc(-1 * var(--wheel-label-radius))) rotate(-${angle}deg)`,
-                      width: "88px",
+                      width: prize.type === "luck" ? "96px" : "88px",
                     }}
                   >
-                    <span className="prize-wheel-emoji text-[2rem] sm:text-[2.25rem] lg:text-[2.5rem] leading-none select-none">
-                      {prize.emoji}
-                    </span>
+                    <div
+                      className={cn(
+                        "prize-wheel-emoji-wrap",
+                        prize.value >= 10 && "prize-wheel-emoji-wrap--jackpot",
+                        prize.type === "luck" && "prize-wheel-emoji-wrap--luck",
+                        prize.type === "cash" && prize.value < 10 && "prize-wheel-emoji-wrap--cash"
+                      )}
+                    >
+                      <span
+                        className="prize-wheel-emoji"
+                        role="img"
+                        aria-hidden
+                        style={{ animationDelay: `${i * 0.12}s` }}
+                      >
+                        {prize.emoji}
+                      </span>
+                    </div>
                     <span
                       className={cn(
                         "font-extrabold text-amber-100 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-wide leading-tight",
-                        prize.label === "GOOD LUCK"
-                          ? "text-[9px] sm:text-[10px]"
+                        prize.type === "luck"
+                          ? "text-[7px] sm:text-[8px] uppercase"
                           : "text-[11px] sm:text-xs"
                       )}
                     >

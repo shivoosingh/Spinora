@@ -77,7 +77,10 @@ export function AnimatedLogo({
   return (
     <Link
       href={href}
-      className={cn("animated-logo group inline-flex items-center gap-2 shrink-0 overflow-hidden", className)}
+      className={cn(
+        "animated-logo group inline-flex items-center gap-1.5 sm:gap-2 min-w-0 overflow-hidden",
+        className
+      )}
       onMouseEnter={() => setReplayKey((k) => k + 1)}
     >
       {showImage && (

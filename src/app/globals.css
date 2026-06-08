@@ -163,18 +163,20 @@ body {
   backface-visibility: hidden;
 }
 
-/* Game slider — auto scroll below hero */
+/* Game slider — auto scroll + manual drag */
 .game-slider-wrap {
   mask-image: linear-gradient(to right, transparent, black 4%, black 96%, transparent);
 }
 
-.game-slider-wrap:hover .game-slider-track {
-  animation-play-state: paused;
+.game-slider-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x;
 }
 
-.game-slider-track {
-  animation: carousel-left 35s linear infinite;
-  will-change: transform;
+.game-slider-scroll::-webkit-scrollbar {
+  display: none;
 }
 
 .game-slider-card {
@@ -315,13 +317,13 @@ body {
 }
 
 @keyframes toast-in {
-  from { transform: translateX(-110%); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+  from { transform: translateY(-120%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
 }
 
 @keyframes toast-out {
-  from { transform: translateX(0); opacity: 1; }
-  to { transform: translateX(-110%); opacity: 0; }
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-120%); opacity: 0; }
 }
 
 .scrollbar-hide {
@@ -515,8 +517,95 @@ body {
   text-shadow: 0 0 20px rgba(251, 191, 36, 0.6);
 }
 
+.prize-wheel-emoji-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.12), rgba(0, 0, 0, 0.35) 70%);
+  box-shadow:
+    0 0 0 2px rgba(251, 191, 36, 0.25),
+    inset 0 2px 8px rgba(255, 255, 255, 0.08),
+    0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.prize-wheel-emoji-wrap--jackpot {
+  width: 3.75rem;
+  height: 3.75rem;
+  background: radial-gradient(circle at 30% 30%, rgba(168, 85, 247, 0.35), rgba(0, 0, 0, 0.4) 70%);
+  box-shadow:
+    0 0 0 2px rgba(251, 191, 36, 0.55),
+    0 0 18px rgba(168, 85, 247, 0.45),
+    inset 0 2px 10px rgba(255, 255, 255, 0.12);
+  animation: prize-emoji-pulse 2s ease-in-out infinite;
+}
+
+.prize-wheel-emoji-wrap--luck {
+  background: radial-gradient(circle at 30% 30%, rgba(34, 197, 94, 0.2), rgba(0, 0, 0, 0.35) 70%);
+  box-shadow:
+    0 0 0 2px rgba(74, 222, 128, 0.35),
+    0 0 14px rgba(34, 197, 94, 0.25),
+    inset 0 2px 8px rgba(255, 255, 255, 0.08);
+}
+
+.prize-wheel-emoji-wrap--cash {
+  background: radial-gradient(circle at 30% 30%, rgba(251, 191, 36, 0.18), rgba(0, 0, 0, 0.35) 70%);
+}
+
 .prize-wheel-emoji {
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
+  font-size: 1.85rem;
+  line-height: 1;
+  user-select: none;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+  animation: prize-emoji-float 3s ease-in-out infinite;
+}
+
+.prize-wheel-emoji-wrap--jackpot .prize-wheel-emoji {
+  font-size: 2.15rem;
+  filter: drop-shadow(0 0 10px rgba(251, 191, 36, 0.6)) drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+}
+
+@media (min-width: 640px) {
+  .prize-wheel-emoji-wrap {
+    width: 3.75rem;
+    height: 3.75rem;
+  }
+
+  .prize-wheel-emoji-wrap--jackpot {
+    width: 4.25rem;
+    height: 4.25rem;
+  }
+
+  .prize-wheel-emoji {
+    font-size: 2.1rem;
+  }
+
+  .prize-wheel-emoji-wrap--jackpot .prize-wheel-emoji {
+    font-size: 2.45rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .prize-wheel-emoji {
+    font-size: 2.35rem;
+  }
+
+  .prize-wheel-emoji-wrap--jackpot .prize-wheel-emoji {
+    font-size: 2.65rem;
+  }
+}
+
+@keyframes prize-emoji-float {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-3px) scale(1.06); }
+}
+
+@keyframes prize-emoji-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.55), 0 0 18px rgba(168, 85, 247, 0.45), inset 0 2px 10px rgba(255, 255, 255, 0.12); }
+  50% { box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.75), 0 0 28px rgba(168, 85, 247, 0.65), inset 0 2px 12px rgba(255, 255, 255, 0.18); }
 }
 
 .prize-wheel-spin-btn {
