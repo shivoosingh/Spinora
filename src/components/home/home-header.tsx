@@ -45,7 +45,7 @@ export function HomeHeader({ onSearchClick, onMenuClick }: HomeHeaderProps) {
           </button>
         )}
         <AnimatedLogo
-          textClassName="hidden sm:inline-flex text-base sm:text-xl"
+          textClassName="inline-flex text-xs sm:text-xl"
           imageSize={28}
           className="min-w-0 overflow-hidden [&_img]:sm:w-9 [&_img]:sm:h-9"
           href={isLoggedIn ? "/" : "/"}

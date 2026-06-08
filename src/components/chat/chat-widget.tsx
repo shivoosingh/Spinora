@@ -146,7 +146,7 @@ export function ChatWidget() {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-24 right-4 z-50 w-[calc(100vw-2rem)] sm:w-96 glass rounded-2xl shadow-2xl overflow-hidden"
+            className="fixed bottom-24 right-6 left-auto z-50 w-[calc(100vw-3rem)] max-w-sm sm:w-96 glass rounded-2xl shadow-2xl overflow-hidden"
           >
             <div className="gradient-bg px-4 py-3 flex items-center justify-between">
               <div>
@@ -215,7 +215,7 @@ export function ChatWidget() {
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
         onClick={() => setOpen(!open)}
-        className="fixed bottom-6 right-4 z-50 w-14 h-14 rounded-full gradient-bg flex items-center justify-center shadow-lg glow-purple relative"
+        className="fixed bottom-6 right-6 left-auto z-50 w-14 h-14 rounded-full gradient-bg flex items-center justify-center shadow-lg glow-purple"
         aria-label="Open chat"
       >
         {open ? <X className="h-6 w-6 text-white" /> : <MessageCircle className="h-6 w-6 text-white" />}
