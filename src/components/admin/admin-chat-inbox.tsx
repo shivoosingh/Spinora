@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type RefObject } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +41,112 @@ function displayContact(user: ConversationUser | null | undefined) {
     return user?.full_name ? `${user.full_name} · Phone user` : "Phone user";
   }
   return email;
+}
+
+interface AdminChatPanelProps {
+  showMobileBack?: boolean;
+  onBack?: () => void;
+  selected: AdminConversation | undefined;
+  messages: Message[];
+  adminId: string | null;
+  selectedId: string;
+  input: string;
+  onInputChange: (value: string) => void;
+  onSend: (file: File | null) => Promise<boolean>;
+  loading: boolean;
+  scrollRef: RefObject<HTMLDivElement | null>;
+}
+
+function AdminChatPanel({
+  showMobileBack,
+  onBack,
+  selected,
+  messages,
+  adminId,
+  selectedId,
+  input,
+  onInputChange,
+  onSend,
+  loading,
+  scrollRef,
+}: AdminChatPanelProps) {
+  return (
+    <>
+      <div className="p-3 sm:p-4 border-b border-white/10 flex items-center gap-2 sm:gap-3 bg-[#121212] shrink-0">
+        {showMobileBack && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            onClick={onBack}
+            aria-label="Back to customers"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        )}
+        <div className="flex-1 min-w-0">
+          <h2 className="font-semibold truncate text-white">
+            {selected?.user?.full_name || "Customer"}
+          </h2>
+          <p className="text-xs text-muted-foreground truncate">
+            {displayContact(selected?.user)}
+          </p>
+        </div>
+        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 shrink-0">
+          Live
+        </Badge>
+      </div>
+
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 pb-4 space-y-3 bg-[#0f0f0f]"
+      >
+        {messages.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-8">
+            No messages yet. Send a reply to start the conversation.
+          </p>
+        ) : (
+          messages.map((msg) => {
+            const isAdminMsg = msg.sender_id === adminId;
+            return (
+              <div
+                key={msg.id}
+                className={cn("flex", isAdminMsg ? "justify-end" : "justify-start")}
+              >
+                <div
+                  className={cn(
+                    "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm break-words",
+                    isAdminMsg
+                      ? "gradient-bg text-white rounded-br-md"
+                      : "bg-[#1e1e1e] text-foreground border border-white/5 rounded-bl-md"
+                  )}
+                >
+                  {!isAdminMsg && (
+                    <p className="text-[10px] font-semibold text-orange-400 mb-1">Customer</p>
+                  )}
+                  <ChatMessageContent message={msg} />
+                  <p className="text-[10px] opacity-60 mt-1.5">
+                    {formatRelativeTime(msg.created_at)}
+                  </p>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <ChatComposer
+        value={input}
+        onChange={onInputChange}
+        onSend={onSend}
+        loading={loading}
+        disabled={!selectedId}
+        placeholder="Type a message..."
+        showSendLabel
+        className="bg-[#121212] border-white/10"
+      />
+    </>
+  );
 }
 
 export function AdminChatInbox({ conversations: initialConversations }: AdminChatInboxProps) {
@@ -196,85 +302,17 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
     return true;
   }
 
-  function ChatPanel({ showMobileBack }: { showMobileBack?: boolean }) {
-    return (
-      <>
-        <div className="p-3 sm:p-4 border-b border-white/10 flex items-center gap-2 sm:gap-3 bg-[#121212] shrink-0">
-          {showMobileBack && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="shrink-0"
-              onClick={() => setMobileChatOpen(false)}
-              aria-label="Back to customers"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          )}
-          <div className="flex-1 min-w-0">
-            <h2 className="font-semibold truncate text-white">
-              {selected?.user?.full_name || "Customer"}
-            </h2>
-            <p className="text-xs text-muted-foreground truncate">
-              {displayContact(selected?.user)}
-            </p>
-          </div>
-          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 shrink-0">
-            Live
-          </Badge>
-        </div>
-
-        <div
-          ref={scrollRef}
-          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 pb-4 space-y-3 bg-[#0f0f0f]"
-        >
-          {messages.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">
-              No messages yet. Send a reply to start the conversation.
-            </p>
-          ) : (
-            messages.map((msg) => {
-              const isAdminMsg = msg.sender_id === adminId;
-              return (
-                <div
-                  key={msg.id}
-                  className={cn("flex", isAdminMsg ? "justify-end" : "justify-start")}
-                >
-                  <div
-                    className={cn(
-                      "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm break-words",
-                      isAdminMsg
-                        ? "gradient-bg text-white rounded-br-md"
-                        : "bg-[#1e1e1e] text-foreground border border-white/5 rounded-bl-md"
-                    )}
-                  >
-                    {!isAdminMsg && (
-                      <p className="text-[10px] font-semibold text-orange-400 mb-1">Customer</p>
-                    )}
-                    <ChatMessageContent message={msg} />
-                    <p className="text-[10px] opacity-60 mt-1.5">
-                      {formatRelativeTime(msg.created_at)}
-                    </p>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        <ChatComposer
-          value={input}
-          onChange={setInput}
-          onSend={handleSend}
-          loading={loading}
-          disabled={!selectedId}
-          placeholder="Type a message..."
-          showSendLabel
-          className="bg-[#121212] border-white/10"
-        />
-      </>
-    );
-  }
+  const chatPanelProps = {
+    selected,
+    messages,
+    adminId,
+    selectedId,
+    input,
+    onInputChange: setInput,
+    onSend: handleSend,
+    loading,
+    scrollRef,
+  };
 
   if (conversations.length === 0) {
     return (
@@ -352,14 +390,18 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
 
           {/* Desktop chat panel */}
           <div className="hidden md:flex md:col-span-2 flex-col min-h-[70vh] min-h-0 overflow-hidden">
-            <ChatPanel />
+            <AdminChatPanel {...chatPanelProps} />
           </div>
         </div>
       </Card>
 
       {/* Mobile full-screen chat — portaled to body so composer is never clipped */}
       <MobileChatShell open={mobileChatOpen && !!selectedId}>
-        <ChatPanel showMobileBack />
+        <AdminChatPanel
+          {...chatPanelProps}
+          showMobileBack
+          onBack={() => setMobileChatOpen(false)}
+        />
       </MobileChatShell>
     </>
   );

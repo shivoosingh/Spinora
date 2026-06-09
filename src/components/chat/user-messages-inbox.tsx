@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type RefObject } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,122 @@ import { cn, formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 import { ArrowLeft, Headphones, MessageCircle } from "lucide-react";
 import type { Message } from "@/types/database";
+
+interface UserChatPanelProps {
+  showMobileBack?: boolean;
+  onBack?: () => void;
+  selectedConversation: ConversationPreview | undefined;
+  messages: Message[];
+  userId: string | null;
+  selectedId: string | null;
+  input: string;
+  onInputChange: (value: string) => void;
+  onSend: (file: File | null) => Promise<boolean>;
+  loading: boolean;
+  scrollRef: RefObject<HTMLDivElement | null>;
+}
+
+function UserChatPanel({
+  showMobileBack,
+  onBack,
+  selectedConversation,
+  messages,
+  userId,
+  selectedId,
+  input,
+  onInputChange,
+  onSend,
+  loading,
+  scrollRef,
+}: UserChatPanelProps) {
+  if (!selectedConversation) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-8 text-center">
+        <div>
+          <MessageCircle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+          <p className="text-sm text-muted-foreground">Select a chat from the list to start messaging.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="p-3 sm:p-4 border-b border-white/10 flex items-center gap-2 sm:gap-3 bg-[#121212] shrink-0">
+        {showMobileBack && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            onClick={onBack}
+            aria-label="Back to chats"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+        )}
+        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-orange-500 flex items-center justify-center shrink-0">
+          <Headphones className="h-5 w-5 text-white" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="font-semibold text-white truncate">{selectedConversation.title}</h2>
+          <p className="text-xs text-muted-foreground truncate">{selectedConversation.subtitle}</p>
+        </div>
+        <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 shrink-0">
+          Live
+        </Badge>
+      </div>
+
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 pb-4 space-y-3 bg-[#0f0f0f]"
+      >
+        {messages.length === 0 ? (
+          <div className="text-center py-12">
+            <MessageCircle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+            <p className="text-sm text-muted-foreground">
+              Say hello — our team typically replies in minutes.
+            </p>
+          </div>
+        ) : (
+          messages.map((msg) => {
+            const isOwn = msg.sender_id === userId;
+            return (
+              <div key={msg.id} className={cn("flex", isOwn ? "justify-end" : "justify-start")}>
+                <div
+                  className={cn(
+                    "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm break-words",
+                    isOwn
+                      ? "gradient-bg text-white rounded-br-md"
+                      : "bg-[#1e1e1e] text-foreground border border-white/5 rounded-bl-md"
+                  )}
+                >
+                  {!isOwn && (
+                    <p className="text-[10px] font-semibold text-orange-400 mb-1">Support</p>
+                  )}
+                  <ChatMessageContent message={msg} />
+                  <p className="text-[10px] opacity-60 mt-1.5">
+                    {formatRelativeTime(msg.created_at)}
+                  </p>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      <ChatComposer
+        value={input}
+        onChange={onInputChange}
+        onSend={onSend}
+        loading={loading}
+        disabled={!selectedId}
+        placeholder="Type a message..."
+        showSendLabel
+        className="bg-[#121212] border-white/10"
+      />
+    </>
+  );
+}
 
 export function UserMessagesInbox() {
   const [conversations, setConversations] = useState<ConversationPreview[]>([]);
@@ -182,95 +298,17 @@ export function UserMessagesInbox() {
     return true;
   }
 
-  function ChatPanel({ showMobileBack }: { showMobileBack?: boolean }) {
-    if (!selectedConversation) {
-      return (
-        <div className="flex-1 flex items-center justify-center p-8 text-center">
-          <div>
-            <MessageCircle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
-            <p className="text-sm text-muted-foreground">Select a chat from the list to start messaging.</p>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <>
-        <div className="p-3 sm:p-4 border-b border-white/10 flex items-center gap-2 sm:gap-3 bg-[#121212] shrink-0">
-          {showMobileBack && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="shrink-0"
-              onClick={() => setMobileChatOpen(false)}
-              aria-label="Back to chats"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          )}
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-orange-500 flex items-center justify-center shrink-0">
-            <Headphones className="h-5 w-5 text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h2 className="font-semibold text-white truncate">{selectedConversation.title}</h2>
-            <p className="text-xs text-muted-foreground truncate">{selectedConversation.subtitle}</p>
-          </div>
-          <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 shrink-0">
-            Live
-          </Badge>
-        </div>
-
-        <div
-          ref={scrollRef}
-          className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-3 sm:p-4 pb-4 space-y-3 bg-[#0f0f0f]"
-        >
-          {messages.length === 0 ? (
-            <div className="text-center py-12">
-              <MessageCircle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">
-                Say hello — our team typically replies in minutes.
-              </p>
-            </div>
-          ) : (
-            messages.map((msg) => {
-              const isOwn = msg.sender_id === userId;
-              return (
-                <div key={msg.id} className={cn("flex", isOwn ? "justify-end" : "justify-start")}>
-                  <div
-                    className={cn(
-                      "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm break-words",
-                      isOwn
-                        ? "gradient-bg text-white rounded-br-md"
-                        : "bg-[#1e1e1e] text-foreground border border-white/5 rounded-bl-md"
-                    )}
-                  >
-                    {!isOwn && (
-                      <p className="text-[10px] font-semibold text-orange-400 mb-1">Support</p>
-                    )}
-                    <ChatMessageContent message={msg} />
-                    <p className="text-[10px] opacity-60 mt-1.5">
-                      {formatRelativeTime(msg.created_at)}
-                    </p>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        <ChatComposer
-          value={input}
-          onChange={setInput}
-          onSend={handleSend}
-          loading={loading}
-          disabled={!selectedId}
-          placeholder="Type a message..."
-          showSendLabel
-          className="bg-[#121212] border-white/10"
-        />
-      </>
-    );
-  }
+  const chatPanelProps = {
+    selectedConversation,
+    messages,
+    userId,
+    selectedId,
+    input,
+    onInputChange: setInput,
+    onSend: handleSend,
+    loading,
+    scrollRef,
+  };
 
   if (initLoading) {
     return (
@@ -350,14 +388,18 @@ export function UserMessagesInbox() {
 
           {/* Desktop chat panel */}
           <div className="hidden md:flex md:col-span-2 flex-col min-h-[70vh] min-h-0 overflow-hidden">
-            <ChatPanel />
+            <UserChatPanel {...chatPanelProps} />
           </div>
         </div>
       </Card>
 
       {/* Mobile full-screen chat — portaled to body so composer is never clipped */}
       <MobileChatShell open={mobileChatOpen && !!selectedConversation}>
-        <ChatPanel showMobileBack />
+        <UserChatPanel
+          {...chatPanelProps}
+          showMobileBack
+          onBack={() => setMobileChatOpen(false)}
+        />
       </MobileChatShell>
     </>
   );
