@@ -49,7 +49,7 @@ interface HomeSidebarProps {
   className?: string;
 }
 
-function SidebarFooter() {
+function SidebarFooter({ isLoggedIn }: { isLoggedIn: boolean }) {
   return (
     <div className="mt-auto space-y-3 pt-2">
       <div className="rounded-xl p-4 bg-gradient-to-br from-[#1f1f1f] to-[#141414] border border-white/5">
@@ -61,10 +61,10 @@ function SidebarFooter() {
           Need help? Chat with our team anytime.
         </p>
         <Link
-          href="/support"
+          href={isLoggedIn ? "/dashboard/messages" : "/support"}
           className="block text-center py-2 rounded-lg bg-white/5 text-white text-xs font-medium hover:bg-white/10 transition-colors border border-white/10"
         >
-          Contact Support
+          {isLoggedIn ? "Open Messages" : "Contact Support"}
         </Link>
       </div>
 
@@ -138,7 +138,7 @@ export function HomeSidebar({
                   <Icon className="h-4 w-4 shrink-0" />
                   <span className="flex-1">{label}</span>
                   {href === "/dashboard/messages" && (
-                    <UnreadBadge count={unreadMessages} dotOnly />
+                    <UnreadBadge count={unreadMessages} />
                   )}
                 </Link>
               );
@@ -221,7 +221,7 @@ export function HomeSidebar({
         </div>
       )}
 
-      <SidebarFooter />
+      <SidebarFooter isLoggedIn={isLoggedIn} />
     </aside>
   );
 }

@@ -1,22 +1,24 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { usePathname } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageCircle, X, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
 import { uploadChatAttachment } from "@/lib/chat/attachments";
 import { sendUserMessage, markConversationRead } from "@/lib/actions/messages";
-import { useUnreadMessages } from "@/hooks/use-unread-messages";
-import { UnreadBadge } from "@/components/ui/unread-badge";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatMessageContent } from "@/components/chat/chat-message-content";
 import { formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 import type { Message } from "@/types/database";
 
+/** Mini chat widget for guests only — logged-in users use MessageRealtimeProvider FAB */
 export function ChatWidget() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -24,11 +26,23 @@ export function ChatWidget() {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const supabase = useMemo(() => createClient(), []);
-  const { count: unreadCount, refresh: refreshUnread } = useUnreadMessages();
+
+  useEffect(() => {
+    if (!supabase) {
+      setIsLoggedIn(false);
+      return;
+    }
+    void supabase.auth.getUser().then(({ data: { user } }) => {
+      setIsLoggedIn(!!user);
+      if (user) setUserId(user.id);
+    });
+  }, [supabase]);
 
   const initChat = useCallback(async () => {
     if (!supabase) return;
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
     setUserId(user.id);
 
@@ -60,33 +74,40 @@ export function ChatWidget() {
   }, [supabase]);
 
   useEffect(() => {
-    if (open && supabase) {
+    if (open && supabase && !isLoggedIn) {
       void initChat();
     }
-  }, [open, initChat, supabase]);
+  }, [open, initChat, supabase, isLoggedIn]);
 
   useEffect(() => {
-    if (open && conversationId) {
-      void markConversationRead(conversationId).then(() => refreshUnread());
+    if (open && conversationId && !isLoggedIn) {
+      void markConversationRead(conversationId);
     }
-  }, [open, conversationId, refreshUnread]);
+  }, [open, conversationId, isLoggedIn]);
 
   useEffect(() => {
-    if (!conversationId || !supabase) return;
+    if (!conversationId || !supabase || isLoggedIn) return;
 
     const channel = supabase
       .channel(`chat-${conversationId}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${conversationId}` },
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `conversation_id=eq.${conversationId}`,
+        },
         (payload) => {
           setMessages((prev) => [...prev, payload.new as Message]);
         }
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
-  }, [conversationId, supabase]);
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [conversationId, supabase, isLoggedIn]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -138,6 +159,12 @@ export function ChatWidget() {
     return true;
   }
 
+  if (isLoggedIn !== false) return null;
+
+  if (pathname?.startsWith("/dashboard/messages") || pathname?.startsWith("/admin")) {
+    return null;
+  }
+
   return (
     <>
       <AnimatePresence>
@@ -146,7 +173,7 @@ export function ChatWidget() {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-24 right-6 left-auto z-50 w-[calc(100vw-3rem)] max-w-sm sm:w-96 glass rounded-2xl shadow-2xl overflow-hidden"
+            className="fixed z-50 glass rounded-2xl shadow-2xl overflow-hidden inset-x-3 bottom-3 max-h-[min(520px,calc(100dvh-1.5rem))] flex flex-col sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-96 sm:max-h-[min(560px,calc(100dvh-3rem))]"
           >
             <div className="gradient-bg px-4 py-3 flex items-center justify-between">
               <div>
@@ -154,16 +181,16 @@ export function ChatWidget() {
                 <p className="text-xs text-white/70">We typically reply in minutes</p>
               </div>
               <div className="flex gap-1">
-                <button onClick={() => setOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg">
+                <button type="button" onClick={() => setOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg">
                   <Minimize2 className="h-4 w-4 text-white" />
                 </button>
-                <button onClick={() => setOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg">
+                <button type="button" onClick={() => setOpen(false)} className="p-1.5 hover:bg-white/10 rounded-lg">
                   <X className="h-4 w-4 text-white" />
                 </button>
               </div>
             </div>
 
-            <div ref={scrollRef} className="h-72 overflow-y-auto p-4 space-y-3">
+            <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 sm:h-72 sm:flex-none">
               {!supabase ? (
                 <p className="text-sm text-muted-foreground text-center py-8">Chat unavailable</p>
               ) : !userId ? (
@@ -205,26 +232,25 @@ export function ChatWidget() {
                 onSend={handleSend}
                 loading={loading}
                 placeholder="Type a message..."
+                className="shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:pb-0"
               />
             )}
           </motion.div>
         )}
       </AnimatePresence>
 
-      <motion.button
-        whileHover={{ scale: 1.05 }}
-        whileTap={{ scale: 0.95 }}
-        onClick={() => setOpen(!open)}
-        className="fixed bottom-6 right-6 left-auto z-50 w-14 h-14 rounded-full gradient-bg flex items-center justify-center shadow-lg glow-purple"
-        aria-label="Open chat"
-      >
-        {open ? <X className="h-6 w-6 text-white" /> : <MessageCircle className="h-6 w-6 text-white" />}
-        {!open && unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5">
-            <UnreadBadge count={unreadCount} className="ring-2 ring-[#121212]" />
-          </span>
-        )}
-      </motion.button>
+      {!open && (
+        <motion.button
+          type="button"
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+          onClick={() => setOpen(true)}
+          className="fixed bottom-5 right-4 sm:bottom-6 sm:right-6 z-50 w-14 h-14 rounded-full gradient-bg flex items-center justify-center shadow-lg glow-purple"
+          aria-label="Open chat"
+        >
+          <MessageCircle className="h-6 w-6 text-white" />
+        </motion.button>
+      )}
     </>
   );
 }

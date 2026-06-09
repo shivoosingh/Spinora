@@ -99,7 +99,7 @@ export function ChatComposer({
         </div>
       )}
 
-      <div className="p-3 flex gap-2">
+      <div className="p-2 sm:p-3 flex gap-1.5 sm:gap-2 items-center">
         <input
           ref={fileInputRef}
           type="file"
@@ -114,6 +114,7 @@ export function ChatComposer({
           disabled={disabled || loading}
           onClick={() => fileInputRef.current?.click()}
           aria-label="Attach file"
+          className="shrink-0 h-10 w-10"
         >
           <Paperclip className="h-4 w-4" />
         </Button>
@@ -122,11 +123,16 @@ export function ChatComposer({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           disabled={disabled || loading}
-          className="flex-1"
+          className="flex-1 min-w-0 h-10"
         />
-        <Button type="submit" disabled={!canSend} size={showSendLabel ? "default" : "icon"}>
+        <Button
+          type="submit"
+          disabled={!canSend}
+          size={showSendLabel ? "default" : "icon"}
+          className="shrink-0 h-10 w-10 sm:w-auto sm:px-4"
+        >
           <Send className="h-4 w-4" />
-          {showSendLabel && <span className="hidden sm:inline">Send</span>}
+          {showSendLabel && <span className="hidden sm:inline sm:ml-1">Send</span>}
         </Button>
       </div>
     </form>

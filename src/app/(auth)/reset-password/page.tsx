@@ -44,14 +44,18 @@ export default function ResetPasswordPage() {
       <CardHeader>
         <CardTitle>Reset Password</CardTitle>
         <CardDescription>
-          {sent ? "Check your email for a reset link" : "Enter your email to receive a reset link"}
+          {sent ? "Check your email for a reset link" : "For Gmail/email accounts only"}
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <p className="text-sm text-muted-foreground mb-4 rounded-lg bg-white/5 border border-white/10 p-3">
+          Signed up with <strong>phone</strong> or <strong>WhatsApp</strong>? Just sign in with a
+          verification code — no password needed.
+        </p>
         {!sent ? (
           <form onSubmit={handleReset} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Gmail / Email</Label>
               <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>

@@ -6,6 +6,8 @@ export interface Profile {
   id: string;
   email: string;
   full_name: string | null;
+  phone: string | null;
+  whatsapp: string | null;
   avatar_url: string | null;
   role: UserRole;
   vip_tier: VipTier;

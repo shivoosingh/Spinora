@@ -10,10 +10,12 @@ import { ChatMessageContent } from "@/components/chat/chat-message-content";
 import { UnreadBadge } from "@/components/ui/unread-badge";
 import {
   ensureUserConversation,
+  getUserConversations,
   markConversationRead,
   sendUserMessage,
+  type ConversationPreview,
 } from "@/lib/actions/messages";
-import { useUnreadMessages } from "@/hooks/use-unread-messages";
+import { useUnreadMessages } from "@/components/chat/message-realtime-provider";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 import { ArrowLeft, Headphones, MessageCircle } from "lucide-react";
@@ -27,21 +29,29 @@ function messagePreview(msg: Message) {
 }
 
 export function UserMessagesInbox() {
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<ConversationPreview[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [initLoading, setInitLoading] = useState(true);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
-  const [lastPreview, setLastPreview] = useState("Start a conversation with our team");
-  const [lastTime, setLastTime] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const supabase = useMemo(() => createClient(), []);
-  const { count: unreadCount, refresh: refreshUnread } = useUnreadMessages();
+  const { refresh: refreshUnread } = useUnreadMessages();
+
+  const selectedConversation = conversations.find((c) => c.id === selectedId);
+
+  const loadConversations = useCallback(async () => {
+    await ensureUserConversation();
+    const list = await getUserConversations();
+    setConversations(list);
+    return list;
+  }, []);
 
   const loadMessages = useCallback(
-    async (convId: string, currentUserId: string) => {
+    async (convId: string) => {
       if (!supabase) return;
 
       const { data } = await supabase
@@ -50,19 +60,12 @@ export function UserMessagesInbox() {
         .eq("conversation_id", convId)
         .order("created_at", { ascending: true });
 
-      const list = data ?? [];
-      setMessages(list);
-
-      if (list.length > 0) {
-        const last = list[list.length - 1];
-        setLastPreview(messagePreview(last));
-        setLastTime(last.created_at);
-      }
-
+      setMessages(data ?? []);
       await markConversationRead(convId);
-      refreshUnread();
+      await refreshUnread();
+      await loadConversations();
     },
-    [supabase, refreshUnread]
+    [supabase, refreshUnread, loadConversations]
   );
 
   const init = useCallback(async () => {
@@ -82,47 +85,49 @@ export function UserMessagesInbox() {
     }
 
     setUserId(user.id);
+    const list = await loadConversations();
 
-    const result = await ensureUserConversation();
-    if ("error" in result) {
-      toast.error(result.error);
-      setInitLoading(false);
-      return;
+    if (list.length > 0) {
+      setSelectedId(list[0].id);
+      await loadMessages(list[0].id);
     }
 
-    setConversationId(result.conversationId);
-    await loadMessages(result.conversationId, user.id);
     setInitLoading(false);
-  }, [supabase, loadMessages]);
+  }, [supabase, loadConversations, loadMessages]);
 
   useEffect(() => {
     init();
-    setMobileChatOpen(true);
   }, [init]);
 
   useEffect(() => {
-    if (!conversationId || !supabase) return;
+    if (!selectedId || !supabase) return;
 
     const channel = supabase
-      .channel(`user-inbox-${conversationId}`)
+      .channel(`user-inbox-${selectedId}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "messages",
-          filter: `conversation_id=eq.${conversationId}`,
+          filter: `conversation_id=eq.${selectedId}`,
         },
         (payload) => {
           const msg = payload.new as Message;
           setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
-          setLastPreview(messagePreview(msg));
-          setLastTime(msg.created_at);
 
-          if (userId && msg.sender_id !== userId && mobileChatOpen) {
-            void markConversationRead(conversationId).then(() => refreshUnread());
+          if (userId && msg.sender_id !== userId) {
+            if (mobileChatOpen || window.matchMedia("(min-width: 768px)").matches) {
+              void markConversationRead(selectedId).then(() => {
+                refreshUnread();
+                loadConversations();
+              });
+            } else {
+              refreshUnread();
+              loadConversations();
+            }
           } else {
-            refreshUnread();
+            loadConversations();
           }
         }
       )
@@ -131,21 +136,20 @@ export function UserMessagesInbox() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [conversationId, supabase, userId, mobileChatOpen, refreshUnread]);
+  }, [selectedId, supabase, userId, mobileChatOpen, refreshUnread, loadConversations]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  function openChat() {
+  async function selectConversation(convId: string) {
+    setSelectedId(convId);
     setMobileChatOpen(true);
-    if (conversationId) {
-      void markConversationRead(conversationId).then(() => refreshUnread());
-    }
+    await loadMessages(convId);
   }
 
   async function handleSend(file: File | null): Promise<boolean> {
-    if ((!input.trim() && !file) || !conversationId) return false;
+    if ((!input.trim() && !file) || !selectedId) return false;
     if (!supabase) {
       toast.error("Chat is unavailable. Check your connection.");
       return false;
@@ -160,7 +164,7 @@ export function UserMessagesInbox() {
       | undefined;
 
     if (file) {
-      const uploadResult = await uploadChatAttachment(supabase, conversationId, file);
+      const uploadResult = await uploadChatAttachment(supabase, selectedId, file);
       if ("error" in uploadResult) {
         toast.error(uploadResult.error);
         setInput(content);
@@ -170,7 +174,7 @@ export function UserMessagesInbox() {
       attachment = uploadResult.data;
     }
 
-    const result = await sendUserMessage(conversationId, content, attachment);
+    const result = await sendUserMessage(selectedId, content, attachment);
     if (result.error) {
       toast.error(result.error);
       setInput(content);
@@ -178,9 +182,7 @@ export function UserMessagesInbox() {
       return false;
     }
 
-    if (conversationId) {
-      await loadMessages(conversationId, userId!);
-    }
+    await loadMessages(selectedId);
     setLoading(false);
     return true;
   }
@@ -206,6 +208,7 @@ export function UserMessagesInbox() {
   return (
     <Card className="overflow-hidden border-white/10 bg-[#161616]">
       <div className="grid grid-cols-1 md:grid-cols-3 min-h-[70vh]">
+        {/* Conversation list — Messenger style */}
         <div
           className={cn(
             "border-r border-white/10 flex flex-col bg-[#141414]",
@@ -214,116 +217,139 @@ export function UserMessagesInbox() {
         >
           <div className="p-4 border-b border-white/10">
             <h2 className="font-semibold text-white">Chats</h2>
-            <p className="text-xs text-muted-foreground">Tap a conversation to open it</p>
+            <p className="text-xs text-muted-foreground">Your conversations</p>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2">
-            <button
-              type="button"
-              onClick={openChat}
-              className={cn(
-                "w-full text-left p-3 rounded-xl transition-colors border",
-                mobileChatOpen || conversationId
-                  ? "bg-white/10 border-orange-500/30"
-                  : "border-transparent hover:bg-white/5"
-              )}
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-purple-600 to-orange-500 flex items-center justify-center shrink-0">
-                  <Headphones className="h-5 w-5 text-white" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2 mb-0.5">
-                    <span className="font-semibold text-sm text-white truncate">
-                      Spinora Support
-                    </span>
-                    <UnreadBadge count={unreadCount} />
-                  </div>
-                  <p className="text-xs text-muted-foreground truncate">{lastPreview}</p>
-                  {lastTime && (
-                    <p className="text-[10px] text-muted-foreground/70 mt-1">
-                      {formatRelativeTime(lastTime)}
-                    </p>
+          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+            {conversations.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8 px-4">
+                No chats yet. Start one with our support team below.
+              </p>
+            ) : (
+              conversations.map((conv) => (
+                <button
+                  key={conv.id}
+                  type="button"
+                  onClick={() => selectConversation(conv.id)}
+                  className={cn(
+                    "w-full text-left p-3 rounded-xl transition-colors border",
+                    selectedId === conv.id
+                      ? "bg-white/10 border-orange-500/30"
+                      : "border-transparent hover:bg-white/5"
                   )}
-                </div>
-              </div>
-            </button>
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-full bg-gradient-to-br from-purple-600 to-orange-500 flex items-center justify-center shrink-0">
+                      <Headphones className="h-5 w-5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-0.5">
+                        <span className="font-semibold text-sm text-white truncate">{conv.title}</span>
+                        {conv.lastMessageAt && (
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            {formatRelativeTime(conv.lastMessageAt)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs text-muted-foreground truncate flex-1">{conv.lastMessage}</p>
+                        <UnreadBadge count={conv.unreadCount} />
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              ))
+            )}
           </div>
         </div>
 
+        {/* Active chat */}
         <div
           className={cn(
             "md:col-span-2 flex flex-col min-h-[70vh]",
-            !mobileChatOpen ? "hidden md:flex" : "flex"
+            !mobileChatOpen ? "hidden md:flex" : "flex fixed inset-x-0 top-14 bottom-0 z-30 md:static md:z-auto md:inset-auto bg-[#0f0f0f] md:bg-transparent"
           )}
         >
-          <div className="p-4 border-b border-white/10 flex items-center gap-3 bg-[#121212]">
-            <button
-              type="button"
-              className="md:hidden p-2 rounded-lg hover:bg-white/10 text-muted-foreground"
-              onClick={() => setMobileChatOpen(false)}
-              aria-label="Back to chats"
-            >
-              <ArrowLeft className="h-4 w-4" />
-            </button>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-orange-500 flex items-center justify-center shrink-0">
-              <Headphones className="h-5 w-5 text-white" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <h2 className="font-semibold text-white truncate">Spinora Support</h2>
-              <p className="text-xs text-muted-foreground">We typically reply in minutes</p>
-            </div>
-            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30">Live</Badge>
-          </div>
-
-          <div
-            ref={scrollRef}
-            className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0f0f0f] min-h-[280px]"
-          >
-            {messages.length === 0 ? (
-              <div className="text-center py-12">
-                <MessageCircle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
-                <p className="text-sm text-muted-foreground">
-                  Say hello to our support team — type below to start chatting.
-                </p>
+          {selectedConversation ? (
+            <>
+              <div className="p-4 border-b border-white/10 flex items-center gap-3 bg-[#121212]">
+                <button
+                  type="button"
+                  className="md:hidden p-2 rounded-lg hover:bg-white/10 text-muted-foreground"
+                  onClick={() => setMobileChatOpen(false)}
+                  aria-label="Back to chats"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                </button>
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-orange-500 flex items-center justify-center shrink-0">
+                  <Headphones className="h-5 w-5 text-white" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h2 className="font-semibold text-white truncate">{selectedConversation.title}</h2>
+                  <p className="text-xs text-muted-foreground truncate">{selectedConversation.subtitle}</p>
+                </div>
+                <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 shrink-0">
+                  Live
+                </Badge>
               </div>
-            ) : (
-              messages.map((msg) => {
-                const isOwn = msg.sender_id === userId;
-                return (
-                  <div key={msg.id} className={cn("flex", isOwn ? "justify-end" : "justify-start")}>
-                    <div
-                      className={cn(
-                        "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm",
-                        isOwn
-                          ? "gradient-bg text-white rounded-br-md"
-                          : "bg-[#1e1e1e] text-foreground border border-white/5 rounded-bl-md"
-                      )}
-                    >
-                      {!isOwn && (
-                        <p className="text-[10px] font-semibold text-orange-400 mb-1">Support</p>
-                      )}
-                      <ChatMessageContent message={msg} />
-                      <p className="text-[10px] opacity-60 mt-1.5">
-                        {formatRelativeTime(msg.created_at)}
-                      </p>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
 
-          <ChatComposer
-            value={input}
-            onChange={setInput}
-            onSend={handleSend}
-            loading={loading}
-            disabled={!conversationId}
-            placeholder="Type a message..."
-            showSendLabel
-            className="bg-[#121212] border-white/10"
-          />
+              <div
+                ref={scrollRef}
+                className="flex-1 overflow-y-auto p-4 space-y-3 bg-[#0f0f0f] min-h-[280px]"
+              >
+                {messages.length === 0 ? (
+                  <div className="text-center py-12">
+                    <MessageCircle className="h-10 w-10 text-muted-foreground mx-auto mb-3" />
+                    <p className="text-sm text-muted-foreground">
+                      Say hello — our team typically replies in minutes.
+                    </p>
+                  </div>
+                ) : (
+                  messages.map((msg) => {
+                    const isOwn = msg.sender_id === userId;
+                    return (
+                      <div key={msg.id} className={cn("flex", isOwn ? "justify-end" : "justify-start")}>
+                        <div
+                          className={cn(
+                            "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm",
+                            isOwn
+                              ? "gradient-bg text-white rounded-br-md"
+                              : "bg-[#1e1e1e] text-foreground border border-white/5 rounded-bl-md"
+                          )}
+                        >
+                          {!isOwn && (
+                            <p className="text-[10px] font-semibold text-orange-400 mb-1">Support</p>
+                          )}
+                          <ChatMessageContent message={msg} />
+                          <p className="text-[10px] opacity-60 mt-1.5">
+                            {formatRelativeTime(msg.created_at)}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <ChatComposer
+                value={input}
+                onChange={setInput}
+                onSend={handleSend}
+                loading={loading}
+                disabled={!selectedId}
+                placeholder="Type a message..."
+                showSendLabel
+                className="bg-[#121212] border-white/10 shrink-0 sticky bottom-0 z-10 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-0"
+              />
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center p-8 text-center">
+              <div>
+                <MessageCircle className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+                <p className="text-sm text-muted-foreground">Select a chat from the list to start messaging.</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Card>

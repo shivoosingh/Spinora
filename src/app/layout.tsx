@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { OrganizationSchema, WebsiteSchema } from "@/lib/seo/json-ld";
 import { homeMetadata } from "@/lib/seo/metadata";
 import { ChatWidgetLoader } from "@/components/chat/chat-widget-loader";
+import { MessageRealtimeProvider } from "@/components/chat/message-realtime-provider";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"], display: "swap" });
@@ -25,8 +26,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="icon" href="/logo.jpeg" />
       </head>
       <body className={inter.className}>
-        {children}
-        <ChatWidgetLoader />
+        <MessageRealtimeProvider>
+          {children}
+          <ChatWidgetLoader />
+        </MessageRealtimeProvider>
         <Toaster theme="dark" position="top-right" richColors />
       </body>
     </html>

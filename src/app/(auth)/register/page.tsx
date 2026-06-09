@@ -2,93 +2,53 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { toast } from "sonner";
+import { AuthMethodPicker, type AuthMethod } from "@/components/auth/auth-method-picker";
+import { OtpAuthForm } from "@/components/auth/otp-auth-form";
+import { GoogleAuthButton } from "@/components/auth/google-auth-button";
+import { EmailAuthForm } from "@/components/auth/email-auth-form";
 
 function RegisterForm() {
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [referralCode, setReferralCode] = useState("");
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const [method, setMethod] = useState<AuthMethod>("phone");
   const searchParams = useSearchParams();
   const refFromUrl = searchParams.get("ref");
-
-  async function handleRegister(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-
-    const supabase = createClient();
-    if (!supabase) {
-      toast.error("Authentication is not configured");
-      setLoading(false);
-      return;
-    }
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          full_name: fullName,
-          referral_code: referralCode || refFromUrl || undefined,
-        },
-      },
-    });
-
-    if (error) {
-      toast.error(error.message);
-      setLoading(false);
-      return;
-    }
-
-    toast.success("Account created! Welcome to Spinora.");
-    router.push("/");
-    router.refresh();
-  }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Create Account</CardTitle>
-        <CardDescription>Join Spinora and start earning VIP rewards</CardDescription>
+        <CardDescription>Join Spinora — sign up with phone, WhatsApp, or Gmail</CardDescription>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleRegister} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Full Name</Label>
-            <Input id="name" value={fullName} onChange={(e) => setFullName(e.target.value)} required placeholder="John Doe" />
+      <CardContent className="space-y-6">
+        <AuthMethodPicker value={method} onChange={setMethod} />
+
+        {method === "phone" && (
+          <OtpAuthForm mode="register" channel="phone" referralCodeFromUrl={refFromUrl} />
+        )}
+        {method === "whatsapp" && (
+          <OtpAuthForm mode="register" channel="whatsapp" referralCodeFromUrl={refFromUrl} />
+        )}
+        {method === "gmail" && (
+          <div className="space-y-4">
+            <GoogleAuthButton redirect="/" label="Sign up with Google" />
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-white/10" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">or use email</span>
+              </div>
+            </div>
+            <EmailAuthForm mode="register" referralCodeFromUrl={refFromUrl} />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="you@example.com" />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="referral">Referral Code (optional)</Label>
-            <Input
-              id="referral"
-              value={referralCode || refFromUrl || ""}
-              onChange={(e) => setReferralCode(e.target.value)}
-              placeholder="Enter referral code"
-              readOnly={!!refFromUrl}
-            />
-          </div>
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating account..." : "Create Account"}
-          </Button>
-        </form>
-        <p className="text-sm text-muted-foreground text-center mt-4">
+        )}
+
+        <p className="text-sm text-muted-foreground text-center">
           Already have an account?{" "}
-          <Link href="/login" className="text-primary hover:underline">Sign In</Link>
+          <Link href="/login" className="text-primary hover:underline">
+            Sign In
+          </Link>
         </p>
       </CardContent>
     </Card>

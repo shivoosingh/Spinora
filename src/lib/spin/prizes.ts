@@ -26,6 +26,9 @@ export const DAILY_SPINS_BY_TIER: Record<string, number> = {
   platinum: 3,
 };
 
+/** Rolling window — next spin unlocks 24 hours after the previous spin(s). */
+export const SPIN_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
 export function pickWeightedPrize(): { prize: WheelPrize; index: number } {
   const total = WHEEL_PRIZES.reduce((s, p) => s + p.weight, 0);
   let rand = Math.random() * total;

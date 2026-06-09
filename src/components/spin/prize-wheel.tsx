@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useLayoutEffect, useRef } from "react
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { WHEEL_PRIZES, getSpinRotation } from "@/lib/spin/prizes";
 import { spinWheel } from "@/lib/actions/spin";
 import { cn } from "@/lib/utils";
@@ -12,7 +13,7 @@ interface PrizeWheelProps {
   isLoggedIn: boolean;
   remainingSpins: number;
   nextFreeSpinMs: number | null;
-  onSpinComplete: (remaining: number) => void;
+  onSpinComplete: (remaining: number, nextFreeSpinMs?: number | null) => void;
 }
 
 interface WheelRadii {
@@ -47,11 +48,17 @@ export function PrizeWheel({
   nextFreeSpinMs,
   onSpinComplete,
 }: PrizeWheelProps) {
+  const router = useRouter();
   const outerRef = useRef<HTMLDivElement>(null);
+  const prevCountdownRef = useRef(nextFreeSpinMs);
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [countdown, setCountdown] = useState(nextFreeSpinMs);
   const [radii, setRadii] = useState<WheelRadii>(DEFAULT_RADII);
+
+  useEffect(() => {
+    setCountdown(nextFreeSpinMs);
+  }, [nextFreeSpinMs]);
 
   useLayoutEffect(() => {
     const el = outerRef.current;
@@ -80,6 +87,14 @@ export function PrizeWheel({
     return () => clearInterval(timer);
   }, [countdown]);
 
+  useEffect(() => {
+    const prev = prevCountdownRef.current;
+    prevCountdownRef.current = countdown;
+    if (prev && prev > 0 && countdown === 0 && remainingSpins <= 0) {
+      router.refresh();
+    }
+  }, [countdown, remainingSpins, router]);
+
   const segmentAngle = 360 / WHEEL_PRIZES.length;
   const gradientStops = WHEEL_PRIZES.map((p, i) => {
     const start = i * segmentAngle;
@@ -93,7 +108,11 @@ export function PrizeWheel({
       return;
     }
     if (remainingSpins <= 0) {
-      toast.error("No spins left today!");
+      toast.error(
+        countdown && countdown > 0
+          ? `No spins left. Next free spin in ${formatCountdown(countdown)}.`
+          : "No spins left. Your next free spin unlocks 24 hours after your last spin."
+      );
       return;
     }
     if (spinning) return;
@@ -115,19 +134,17 @@ export function PrizeWheel({
       setTimeout(() => {
         setSpinning(false);
         if (result.prize!.type === "luck") {
-          toast.info(`${result.prize!.emoji} ${result.prize!.label} — Try again tomorrow!`);
+          toast.info(`${result.prize!.emoji} ${result.prize!.label} — Next spin in 24 hours.`);
         } else {
           toast.success(`${result.prize!.emoji} You won ${result.prize!.label}! Added to Bonus Wallet.`);
         }
-        onSpinComplete(result.remainingSpins ?? 0);
-        if (result.remainingSpins === 0) {
-          const tomorrow = new Date();
-          tomorrow.setHours(24, 0, 0, 0);
-          setCountdown(tomorrow.getTime() - Date.now());
+        onSpinComplete(result.remainingSpins ?? 0, result.nextFreeSpinMs);
+        if (result.remainingSpins === 0 && result.nextFreeSpinMs) {
+          setCountdown(result.nextFreeSpinMs);
         }
       }, 5000);
     }
-  }, [isLoggedIn, remainingSpins, spinning, rotation, onSpinComplete]);
+  }, [isLoggedIn, remainingSpins, spinning, rotation, countdown, onSpinComplete]);
 
   return (
     <div className="flex flex-col items-center w-full">

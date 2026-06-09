@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { sendAdminMessage } from "@/lib/actions/admin";
+import { getAdminConversationUnreads, type AdminConversationUnread } from "@/lib/actions/messages";
 import { uploadChatAttachment } from "@/lib/chat/attachments";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatMessageContent } from "@/components/chat/chat-message-content";
+import { UnreadBadge } from "@/components/ui/unread-badge";
+import { useUnreadMessages } from "@/hooks/use-unread-messages";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 import { ArrowLeft, MessageCircle } from "lucide-react";
@@ -31,8 +34,17 @@ interface AdminChatInboxProps {
   conversations: AdminConversation[];
 }
 
+function displayContact(user: ConversationUser | null | undefined) {
+  const email = user?.email ?? "";
+  if (!email || email.endsWith("@phone.spinora.local")) {
+    return user?.full_name ? `${user.full_name} · Phone user` : "Phone user";
+  }
+  return email;
+}
+
 export function AdminChatInbox({ conversations: initialConversations }: AdminChatInboxProps) {
   const [conversations, setConversations] = useState(initialConversations);
+  const [unreads, setUnreads] = useState<Record<string, AdminConversationUnread>>({});
   const [selectedId, setSelectedId] = useState(initialConversations[0]?.id ?? "");
   const [messages, setMessages] = useState<Message[]>([]);
   const [adminId, setAdminId] = useState<string | null>(null);
@@ -41,8 +53,18 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const supabase = useMemo(() => createClient(), []);
+  const { refresh: refreshGlobalUnread } = useUnreadMessages();
 
   const selected = conversations.find((c) => c.id === selectedId);
+
+  const loadUnreads = useCallback(async () => {
+    const list = await getAdminConversationUnreads();
+    const map: Record<string, AdminConversationUnread> = {};
+    for (const item of list) {
+      map[item.conversationId] = item;
+    }
+    setUnreads(map);
+  }, []);
 
   const loadMessages = useCallback(
     async (conversationId: string) => {
@@ -55,44 +77,69 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
 
       if (data) setMessages(data);
 
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
       await supabase
         .from("messages")
         .update({ is_read: true })
         .eq("conversation_id", conversationId)
-        .neq("sender_id", (await supabase.auth.getUser()).data.user?.id ?? "");
+        .neq("sender_id", user?.id ?? "")
+        .eq("is_read", false);
+
+      await loadUnreads();
+      await refreshGlobalUnread();
     },
-    [supabase]
+    [supabase, loadUnreads, refreshGlobalUnread]
   );
 
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getUser().then(({ data }) => setAdminId(data.user?.id ?? null));
-  }, [supabase]);
+    void loadUnreads();
+  }, [supabase, loadUnreads]);
+
+  useEffect(() => {
+    if (!supabase || !adminId || conversations.length === 0) return;
+
+    const channels: ReturnType<typeof supabase.channel>[] = [];
+
+    for (const conv of conversations) {
+      const channel = supabase
+        .channel(`admin-list-${conv.id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "messages",
+            filter: `conversation_id=eq.${conv.id}`,
+          },
+          (payload) => {
+            const msg = payload.new as Message;
+            if (msg.sender_id === adminId) return;
+            void loadUnreads();
+            if (conv.id === selectedId) {
+              setMessages((prev) =>
+                prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]
+              );
+              void loadMessages(conv.id);
+            }
+          }
+        )
+        .subscribe();
+      channels.push(channel);
+    }
+
+    return () => {
+      for (const ch of channels) supabase.removeChannel(ch);
+    };
+  }, [conversations, supabase, adminId, selectedId, loadUnreads, loadMessages]);
 
   useEffect(() => {
     if (!selectedId || !supabase) return;
     loadMessages(selectedId);
-
-    const channel = supabase
-      .channel(`admin-inbox-${selectedId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `conversation_id=eq.${selectedId}`,
-        },
-        (payload) => {
-          const msg = payload.new as Message;
-          setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, [selectedId, supabase, loadMessages]);
 
   useEffect(() => {
@@ -154,37 +201,40 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
         <MessageCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
         <h3 className="font-semibold mb-2">No customer chats yet</h3>
         <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          When customers use the live chat widget on the website, their conversations will appear here so you can reply in real time.
+          When customers message you on the website, their conversations will appear here.
         </p>
       </Card>
     );
   }
 
   return (
-    <Card className="overflow-hidden">
+    <Card className="overflow-hidden border-white/10 bg-[#161616]">
       <div className="grid grid-cols-1 md:grid-cols-3 min-h-[70vh]">
         <div
           className={cn(
-            "border-r border-border flex flex-col",
+            "border-r border-white/10 flex flex-col bg-[#141414]",
             mobileChatOpen ? "hidden md:flex" : "flex"
           )}
         >
-          <div className="p-4 border-b border-border">
-            <h2 className="font-semibold">Customers</h2>
+          <div className="p-4 border-b border-white/10">
+            <h2 className="font-semibold text-white">Customers</h2>
             <p className="text-xs text-muted-foreground">{conversations.length} active chat(s)</p>
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
             {conversations.map((conv) => {
               const user = conv.user;
               const isActive = conv.id === selectedId;
+              const meta = unreads[conv.id];
               return (
                 <button
                   key={conv.id}
                   type="button"
                   onClick={() => selectConversation(conv.id)}
                   className={cn(
-                    "w-full text-left p-3 rounded-lg transition-colors",
-                    isActive ? "bg-primary/20 border border-primary/30" : "hover:bg-muted"
+                    "w-full text-left p-3 rounded-xl transition-colors border",
+                    isActive
+                      ? "bg-white/10 border-orange-500/30"
+                      : "border-transparent hover:bg-white/5"
                   )}
                 >
                   <div className="flex items-center gap-2 mb-1">
@@ -194,13 +244,23 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
                         user?.is_online ? "bg-green-400" : "bg-gray-500"
                       )}
                     />
-                    <span className="font-medium text-sm truncate">
+                    <span className="font-medium text-sm truncate text-white flex-1">
                       {user?.full_name || "Customer"}
                     </span>
+                    {meta?.lastMessageAt && (
+                      <span className="text-[10px] text-muted-foreground shrink-0">
+                        {formatRelativeTime(meta.lastMessageAt)}
+                      </span>
+                    )}
                   </div>
-                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    {formatRelativeTime(conv.updated_at)}
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs text-muted-foreground truncate flex-1">
+                      {meta?.lastMessage ?? displayContact(user)}
+                    </p>
+                    <UnreadBadge count={meta?.unreadCount ?? 0} />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground/70 truncate mt-0.5">
+                    {displayContact(user)}
                   </p>
                 </button>
               );
@@ -210,56 +270,58 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
 
         <div
           className={cn(
-            "md:col-span-2 flex flex-col",
-            !mobileChatOpen ? "hidden md:flex" : "flex"
+            "md:col-span-2 flex flex-col min-h-[70vh]",
+            !mobileChatOpen ? "hidden md:flex" : "flex fixed inset-x-0 top-14 bottom-0 z-30 md:static md:z-auto md:inset-auto bg-[#0f0f0f] md:bg-transparent"
           )}
         >
-          <div className="p-4 border-b border-border flex items-center gap-3">
+          <div className="p-4 border-b border-white/10 flex items-center gap-3 bg-[#121212]">
             <Button
               variant="ghost"
               size="icon"
-              className="md:hidden"
+              className="md:hidden shrink-0"
               onClick={() => setMobileChatOpen(false)}
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div className="flex-1 min-w-0">
-              <h2 className="font-semibold truncate">
+              <h2 className="font-semibold truncate text-white">
                 {selected?.user?.full_name || "Customer"}
               </h2>
               <p className="text-xs text-muted-foreground truncate">
-                {selected?.user?.email}
+                {displayContact(selected?.user)}
               </p>
             </div>
-            <Badge variant="success">Live</Badge>
+            <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 shrink-0">
+              Live
+            </Badge>
           </div>
 
-          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[300px]">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[280px] bg-[#0f0f0f]">
             {messages.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
                 No messages yet. Send a reply to start the conversation.
               </p>
             ) : (
               messages.map((msg) => {
-                const isAdmin = msg.sender_id === adminId;
+                const isAdminMsg = msg.sender_id === adminId;
                 return (
                   <div
                     key={msg.id}
-                    className={cn("flex", isAdmin ? "justify-end" : "justify-start")}
+                    className={cn("flex", isAdminMsg ? "justify-end" : "justify-start")}
                   >
                     <div
                       className={cn(
-                        "max-w-[85%] rounded-xl px-4 py-2 text-sm",
-                        isAdmin
-                          ? "gradient-bg text-white"
-                          : "bg-muted text-foreground"
+                        "max-w-[85%] rounded-2xl px-4 py-2.5 text-sm",
+                        isAdminMsg
+                          ? "gradient-bg text-white rounded-br-md"
+                          : "bg-[#1e1e1e] text-foreground border border-white/5 rounded-bl-md"
                       )}
                     >
-                      {!isAdmin && (
-                        <p className="text-[10px] font-semibold opacity-70 mb-0.5">Customer</p>
+                      {!isAdminMsg && (
+                        <p className="text-[10px] font-semibold text-orange-400 mb-1">Customer</p>
                       )}
                       <ChatMessageContent message={msg} />
-                      <p className="text-[10px] opacity-60 mt-1">
+                      <p className="text-[10px] opacity-60 mt-1.5">
                         {formatRelativeTime(msg.created_at)}
                       </p>
                     </div>
@@ -277,6 +339,7 @@ export function AdminChatInbox({ conversations: initialConversations }: AdminCha
             disabled={!selectedId}
             placeholder="Type your reply to the customer..."
             showSendLabel
+            className="bg-[#121212] border-white/10 shrink-0 sticky bottom-0 z-10 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-0"
           />
         </div>
       </div>

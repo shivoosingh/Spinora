@@ -19,10 +19,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { AnimatedLogo, AnimatedLogoText } from "@/components/ui/animated-logo";
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { logoutUser } from "@/lib/auth/logout";
 import { NotificationDropdown } from "@/components/notifications/notification-dropdown";
 import { WalletCardLoader } from "@/components/wallet/wallet-card-loader";
+import { useUnreadMessages } from "@/hooks/use-unread-messages";
+import { UnreadBadge } from "@/components/ui/unread-badge";
 
 const userLinks = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -48,10 +49,12 @@ function NavLinks({
   pathname,
   isAdmin,
   onNavigate,
+  unreadMessages,
 }: {
   pathname: string;
   isAdmin: boolean;
   onNavigate?: () => void;
+  unreadMessages: number;
 }) {
   return (
     <>
@@ -72,8 +75,11 @@ function NavLinks({
                 : "text-muted-foreground hover:text-foreground hover:bg-muted"
             )}
           >
-            <Icon className="h-4 w-4" />
-            {link.label}
+            <Icon className="h-4 w-4 shrink-0" />
+            <span className="flex-1">{link.label}</span>
+            {link.href === "/dashboard/messages" && !isAdmin && (
+              <UnreadBadge count={unreadMessages} />
+            )}
           </Link>
         );
       })}
@@ -102,8 +108,11 @@ function NavLinks({
                     : "text-muted-foreground hover:text-foreground hover:bg-muted"
                 )}
               >
-                <Icon className="h-4 w-4" />
-                {link.label}
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="flex-1">{link.label}</span>
+                {link.href === "/admin/chat" && (
+                  <UnreadBadge count={unreadMessages} />
+                )}
               </Link>
             );
           })}
@@ -115,14 +124,11 @@ function NavLinks({
 
 export function DashboardNav({ isAdmin = false }: DashboardNavProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { count: unreadMessages } = useUnreadMessages();
 
   async function handleLogout() {
-    const supabase = createClient();
-    if (supabase) await supabase.auth.signOut();
-    router.push("/");
-    router.refresh();
+    await logoutUser("/");
   }
 
   return (
@@ -172,6 +178,7 @@ export function DashboardNav({ isAdmin = false }: DashboardNavProps) {
                   pathname={pathname}
                   isAdmin={isAdmin}
                   onNavigate={() => setMobileOpen(false)}
+                  unreadMessages={unreadMessages}
                 />
               </nav>
               <div className="p-3 border-t border-border">
@@ -195,7 +202,7 @@ export function DashboardNav({ isAdmin = false }: DashboardNavProps) {
           <WalletCardLoader />
         </div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          <NavLinks pathname={pathname} isAdmin={isAdmin} />
+          <NavLinks pathname={pathname} isAdmin={isAdmin} unreadMessages={unreadMessages} />
         </nav>
         <div className="p-3 border-t border-border">
           <Button variant="ghost" className="w-full justify-start gap-3" onClick={handleLogout}>

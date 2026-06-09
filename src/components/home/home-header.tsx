@@ -6,6 +6,8 @@ import { Search, MessageCircle, Menu } from "lucide-react";
 import { AnimatedLogo } from "@/components/ui/animated-logo";
 import { NotificationDropdown } from "@/components/notifications/notification-dropdown";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
+import { UnreadBadge } from "@/components/ui/unread-badge";
+import { useUnreadMessages } from "@/hooks/use-unread-messages";
 import { createClient } from "@/lib/supabase/client";
 
 interface HomeHeaderProps {
@@ -15,6 +17,7 @@ interface HomeHeaderProps {
 
 export function HomeHeader({ onSearchClick, onMenuClick }: HomeHeaderProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const { count: unreadMessages } = useUnreadMessages();
 
   useEffect(() => {
     const supabase = createClient();
@@ -32,7 +35,7 @@ export function HomeHeader({ onSearchClick, onMenuClick }: HomeHeaderProps) {
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 flex items-center justify-between gap-2 sm:gap-4 px-3 sm:px-6 py-3 bg-[#121212]/95 backdrop-blur-md border-b border-white/5">
+    <header className="sticky top-0 z-40 flex items-center justify-between gap-2 sm:gap-4 px-3 sm:px-6 py-3 bg-[#121212]/95 backdrop-blur-md border-b border-white/5 overflow-visible">
       <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
         {onMenuClick && (
           <button
@@ -95,10 +98,15 @@ export function HomeHeader({ onSearchClick, onMenuClick }: HomeHeaderProps) {
 
         <Link
           href={isLoggedIn ? "/dashboard/messages" : "/support"}
-          className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-purple-600 text-white hover:bg-purple-500 transition-colors shrink-0"
-          aria-label="Live chat support"
+          className="relative flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-purple-600 text-white hover:bg-purple-500 transition-colors shrink-0"
+          aria-label="Messages and live chat support"
         >
           <MessageCircle className="h-4 w-4 sm:h-5 sm:w-5" />
+          {isLoggedIn && unreadMessages > 0 && (
+            <span className="absolute -top-1 -right-1">
+              <UnreadBadge count={unreadMessages} className="ring-2 ring-[#121212]" />
+            </span>
+          )}
         </Link>
       </div>
     </header>

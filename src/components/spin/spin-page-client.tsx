@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { History, Gift, Clock, Coins, Sparkles } from "lucide-react";
 import { PrizeWheel } from "@/components/spin/prize-wheel";
 import { SpinHistory } from "@/components/spin/spin-history";
@@ -22,6 +22,13 @@ interface SpinPageClientProps {
   }>;
 }
 
+function formatCountdown(ms: number) {
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return `${h}h ${m}m ${s}s`;
+}
+
 export function SpinPageClient({
   isLoggedIn,
   dailyLimit,
@@ -30,11 +37,25 @@ export function SpinPageClient({
   history,
 }: SpinPageClientProps) {
   const [remaining, setRemaining] = useState(initialRemaining);
+  const [cooldownMs, setCooldownMs] = useState(nextFreeSpinMs);
   const [showHistory, setShowHistory] = useState(false);
   const [walletRefresh, setWalletRefresh] = useState(0);
 
-  function handleSpinComplete(left: number) {
+  useEffect(() => {
+    setCooldownMs(nextFreeSpinMs);
+  }, [nextFreeSpinMs]);
+
+  useEffect(() => {
+    if (!cooldownMs || cooldownMs <= 0) return;
+    const timer = setInterval(() => {
+      setCooldownMs((c) => (c && c > 1000 ? c - 1000 : 0));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldownMs]);
+
+  function handleSpinComplete(left: number, nextMs?: number | null) {
     setRemaining(left);
+    setCooldownMs(nextMs ?? null);
     setWalletRefresh((k) => k + 1);
   }
 
@@ -82,7 +103,7 @@ export function SpinPageClient({
                 <h3 className="font-semibold text-purple-200">Daily Free Spin</h3>
               </div>
               <p className="text-sm text-muted-foreground">
-                All members get free spins every day. Come back daily to keep your streak going!
+                Free spins unlock again 24 hours after your last spin. Come back daily to keep your streak going!
               </p>
             </div>
           </div>
@@ -92,7 +113,7 @@ export function SpinPageClient({
             <PrizeWheel
               isLoggedIn={isLoggedIn}
               remainingSpins={remaining}
-              nextFreeSpinMs={nextFreeSpinMs}
+              nextFreeSpinMs={cooldownMs}
               onSpinComplete={handleSpinComplete}
             />
           </div>
@@ -124,6 +145,12 @@ export function SpinPageClient({
                   <span className="text-muted-foreground">Remaining Spins:</span>
                   <span className="text-amber-400 font-bold text-lg">{remaining}</span>
                 </div>
+                {remaining <= 0 && cooldownMs && cooldownMs > 0 && (
+                  <div className="flex justify-between items-center py-2 border-t border-white/5">
+                    <span className="text-muted-foreground">Next spin in:</span>
+                    <span className="text-purple-300 font-bold">{formatCountdown(cooldownMs)}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -135,8 +162,8 @@ export function SpinPageClient({
                 </h3>
               </div>
               <p className="text-sm text-muted-foreground leading-relaxed">
-                Spin 7 days in a row for a guaranteed reward. Higher VIP tiers unlock more daily
-                spins automatically!
+                Each spin unlocks 24 hours after your previous one. Higher VIP tiers get more spins
+                per 24-hour window!
               </p>
               {!isLoggedIn && (
                 <Link

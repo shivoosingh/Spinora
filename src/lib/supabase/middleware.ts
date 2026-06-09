@@ -31,7 +31,7 @@ export async function updateSession(request: NextRequest) {
 
   const protectedRoutes = ["/dashboard", "/admin", "/chat"];
   const adminRoutes = ["/admin"];
-  const authRoutes = ["/login", "/register", "/reset-password"];
+  const authRoutes = ["/login", "/register", "/reset-password", "/auth/callback"];
 
   const isProtected = protectedRoutes.some((r) => path.startsWith(r));
   const isAdmin = adminRoutes.some((r) => path.startsWith(r));
@@ -44,7 +44,7 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isAuth) {
+  if (user && isAuth && path !== "/auth/callback") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

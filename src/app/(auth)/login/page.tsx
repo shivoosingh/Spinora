@@ -2,71 +2,53 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { toast } from "sonner";
+import { AuthMethodPicker, type AuthMethod } from "@/components/auth/auth-method-picker";
+import { OtpAuthForm } from "@/components/auth/otp-auth-form";
+import { GoogleAuthButton } from "@/components/auth/google-auth-button";
+import { EmailAuthForm } from "@/components/auth/email-auth-form";
 
 function LoginForm() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
+  const [method, setMethod] = useState<AuthMethod>("phone");
   const searchParams = useSearchParams();
   const redirect = searchParams.get("redirect") || "/";
-
-  async function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-
-    const supabase = createClient();
-    if (!supabase) {
-      toast.error("Authentication is not configured");
-      setLoading(false);
-      return;
-    }
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-
-    if (error) {
-      toast.error(error.message);
-      setLoading(false);
-      return;
-    }
-
-    toast.success("Welcome back!");
-    router.push(redirect);
-    router.refresh();
-  }
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Welcome Back</CardTitle>
-        <CardDescription>Sign in to your Spinora account</CardDescription>
+        <CardDescription>Sign in with your phone, WhatsApp, or Gmail</CardDescription>
       </CardHeader>
-      <CardContent>
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required placeholder="you@example.com" />
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <Label htmlFor="password">Password</Label>
-              <Link href="/reset-password" className="text-xs text-primary hover:underline">Forgot password?</Link>
+      <CardContent className="space-y-6">
+        <AuthMethodPicker value={method} onChange={setMethod} />
+
+        {method === "phone" && (
+          <OtpAuthForm mode="login" channel="phone" redirect={redirect} />
+        )}
+        {method === "whatsapp" && (
+          <OtpAuthForm mode="login" channel="whatsapp" redirect={redirect} />
+        )}
+        {method === "gmail" && (
+          <div className="space-y-4">
+            <GoogleAuthButton redirect={redirect} label="Continue with Google" />
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-white/10" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">or use email</span>
+              </div>
             </div>
-            <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <EmailAuthForm mode="login" redirect={redirect} />
           </div>
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Signing in..." : "Sign In"}
-          </Button>
-        </form>
-        <p className="text-sm text-muted-foreground text-center mt-4">
+        )}
+
+        <p className="text-sm text-muted-foreground text-center">
           Don&apos;t have an account?{" "}
-          <Link href="/register" className="text-primary hover:underline">Register</Link>
+          <Link href="/register" className="text-primary hover:underline">
+            Register
+          </Link>
         </p>
       </CardContent>
     </Card>
