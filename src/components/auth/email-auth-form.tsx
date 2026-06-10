@@ -10,8 +10,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { DEFAULT_COUNTRY_ISO, PhoneNumberInput, phoneFromParts } from "@/components/auth/phone-number-input";
-import { normalizeEmail } from "@/lib/auth/identifier";
-import { isPhoneAvailable, registerWithEmail, signInWithEmailPassword } from "@/lib/actions/auth";
+import { buildAuthCallbackUrl } from "@/lib/auth/callback-url";
+import { normalizeEmail, formatAuthErrorMessage } from "@/lib/auth/identifier";
+import {
+  finalizeRegistrationAfterSignUp,
+  isPhoneAvailable,
+  signInWithEmailPassword,
+} from "@/lib/actions/auth";
 
 interface EmailAuthFormProps {
   mode: "login" | "register";
@@ -51,6 +56,10 @@ function EmailConfirmationNotice({
             your account and you&apos;ll be signed in automatically.
           </>
         )}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Open the link in the <strong className="text-foreground">same browser</strong> you used to
+        register. Each link works once — request a new one from Sign In if it expired.
       </p>
       <p className="text-xs text-muted-foreground">Check spam if you don&apos;t see it in 1–2 minutes.</p>
       <Link href="/login" className="inline-block text-sm text-primary hover:underline">
@@ -100,7 +109,6 @@ export function EmailAuthForm({ mode, redirect = "/dashboard", referralCodeFromU
       }
 
       if (!result.loggedIn) {
-        await supabase.auth.signOut();
         setPendingEmail(result.email);
         setAwaitingConfirmation(true);
         toast.success("Confirmation email sent! Verify your email to continue.");
@@ -128,27 +136,70 @@ export function EmailAuthForm({ mode, redirect = "/dashboard", referralCodeFromU
     }
 
     const normalizedEmail = normalizeEmail(email);
+    const emailRedirectTo = buildAuthCallbackUrl(
+      window.location.origin,
+      redirect,
+      referralCode.trim() || referralCodeFromUrl || undefined
+    );
 
-    const result = await registerWithEmail({
-      fullName: fullName.trim(),
+    const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
       password,
-      phone,
-      referralCode: referralCode.trim() || referralCodeFromUrl || undefined,
-      redirect,
-      callbackOrigin: window.location.origin,
+      options: {
+        emailRedirectTo,
+        data: {
+          full_name: fullName.trim(),
+          phone,
+          referral_code: referralCode.trim() || referralCodeFromUrl || undefined,
+          auth_method: "email",
+        },
+      },
     });
 
-    await supabase.auth.signOut();
-
-    setLoading(false);
-
-    if (!result.ok) {
-      toast.error(result.error);
+    if (error) {
+      setLoading(false);
+      toast.error(formatAuthErrorMessage(error.message));
       return;
     }
 
-    setPendingEmail(result.email);
+    if (!data.user) {
+      setLoading(false);
+      toast.error("Could not create account");
+      return;
+    }
+
+    if (data.user.identities?.length === 0) {
+      setLoading(false);
+      toast.error(
+        "This email is already registered. Check your inbox for an earlier confirmation link, or go to Sign In."
+      );
+      return;
+    }
+
+    if (data.session && data.user.email_confirmed_at) {
+      await supabase.auth.signOut();
+      setLoading(false);
+      toast.error(
+        'Confirmation emails are turned off in Supabase. Enable "Confirm email" under Authentication → Providers → Email.'
+      );
+      return;
+    }
+
+    const saved = await finalizeRegistrationAfterSignUp({
+      userId: data.user.id,
+      fullName: fullName.trim(),
+      email: normalizedEmail,
+      phone,
+    });
+
+    setLoading(false);
+
+    if (!saved.ok) {
+      toast.error(saved.error ?? "Account created but phone was not saved");
+      return;
+    }
+
+    setPendingEmail(normalizedEmail);
     setAwaitingConfirmation(true);
     toast.success("Account created! Check your email to confirm.");
   }

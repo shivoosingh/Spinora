@@ -13,7 +13,9 @@ function LoginForm() {
 
   useEffect(() => {
     if (searchParams.get("error") === "auth_callback_failed") {
-      toast.error("Sign-in link expired or invalid. Try signing in again.");
+      toast.error(
+        "Confirmation link expired or already used. Register again or sign in to get a new link."
+      );
     }
     if (searchParams.get("error") === "email_not_confirmed") {
       toast.error("Please confirm your email before accessing your account.");

@@ -35,11 +35,11 @@ export function maskEmail(email: string): string {
 /** Friendlier Supabase auth errors for OTP flows */
 export function formatAuthErrorMessage(message: string): string {
   const lower = message.toLowerCase();
-  if (lower.includes("rate limit") || lower.includes("429")) {
-    return "Too many codes sent. Supabase limits emails to a few per hour on the free plan — wait ~1 hour or use Continue with Google.";
+  if (lower.includes("rate limit") || lower.includes("429") || lower.includes("over_email_send_rate_limit")) {
+    return "Too many emails sent. Wait about 1 hour, or enable Custom SMTP (Resend) in Supabase → Project Settings → Authentication → SMTP.";
   }
   if (lower.includes("confirmation mail") || lower.includes("sending confirmation") || lower.includes("magic link email")) {
-    return "Could not send email. Check Supabase SMTP settings (Resend): sender email, API key, and domain verification.";
+    return "Could not send email. Check Supabase Custom SMTP (Resend): sender noreply@shivoosingh.com.np, API key, and domain verification.";
   }
   if (lower.includes("already registered") || lower.includes("already been registered")) {
     return "This email is already registered. Go to Sign In instead.";

@@ -263,7 +263,7 @@ export async function signInWithEmailPassword(input: {
         return { ok: false, error: formatAuthErrorMessage(resendError.message) };
       }
 
-      await supabase.auth.signOut();
+      // Do not signOut — it clears the PKCE verifier needed for the confirmation link
       return {
         ok: true,
         loggedIn: false,
@@ -357,10 +357,30 @@ export async function registerWithEmail(input: {
     return { ok: false, error: saved.error ?? "Account created but phone was not saved" };
   }
 
-  // Never keep the user logged in after signup — they must confirm via email first
-  await supabase.auth.signOut();
-
+  // Do not signOut here — it clears PKCE state and breaks the confirmation email link
   return { ok: true, email: normalizedEmail };
+}
+
+/** Save phone/profile after client-side signUp (keeps PKCE cookies in the browser) */
+export async function finalizeRegistrationAfterSignUp(input: {
+  userId: string;
+  fullName: string;
+  email: string;
+  phone: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const e164 = parseInternationalPhone(input.phone);
+  if (!e164) return { ok: false, error: "Invalid phone number" };
+
+  const phoneCheck = await isPhoneAvailable(e164);
+  if (!phoneCheck.available) {
+    return { ok: false, error: phoneCheck.error ?? "This phone number is already registered" };
+  }
+
+  return persistContactOnProfile(input.userId, {
+    phone: e164,
+    fullName: input.fullName.trim(),
+    email: normalizeEmail(input.email),
+  });
 }
 
 /** Save phone, name, and email on profiles after signup */
