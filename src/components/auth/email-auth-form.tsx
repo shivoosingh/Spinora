@@ -170,18 +170,7 @@ export function EmailAuthForm({ mode, redirect = "/dashboard", referralCodeFromU
 
     if (data.user.identities?.length === 0) {
       setLoading(false);
-      toast.error(
-        "This email is already registered. Check your inbox for an earlier confirmation link, or go to Sign In."
-      );
-      return;
-    }
-
-    if (data.session && data.user.email_confirmed_at) {
-      await supabase.auth.signOut();
-      setLoading(false);
-      toast.error(
-        'Confirmation emails are turned off in Supabase. Enable "Confirm email" under Authentication → Providers → Email.'
-      );
+      toast.error("This email is already registered. Go to Sign In instead.");
       return;
     }
 
@@ -192,16 +181,26 @@ export function EmailAuthForm({ mode, redirect = "/dashboard", referralCodeFromU
       phone,
     });
 
-    setLoading(false);
-
     if (!saved.ok) {
+      setLoading(false);
       toast.error(saved.error ?? "Account created but phone was not saved");
       return;
     }
 
-    setPendingEmail(normalizedEmail);
-    setAwaitingConfirmation(true);
-    toast.success("Account created! Check your email to confirm.");
+    // Email confirmation enabled — no session until user clicks email link
+    if (!data.session) {
+      setLoading(false);
+      setPendingEmail(normalizedEmail);
+      setAwaitingConfirmation(true);
+      toast.success("Account created! Check your email to confirm.");
+      return;
+    }
+
+    // Instant login (Confirm email OFF in Supabase)
+    setLoading(false);
+    toast.success("Account created! Welcome to Spinora.");
+    router.push(redirect);
+    router.refresh();
   }
 
   if (awaitingConfirmation && pendingEmail) {
@@ -290,13 +289,12 @@ export function EmailAuthForm({ mode, redirect = "/dashboard", referralCodeFromU
       </Button>
       {mode === "register" && (
         <p className="text-xs text-muted-foreground text-center">
-          You won&apos;t be signed in until you confirm your email via the link we send you.
+          Create your account and start playing right away.
         </p>
       )}
       {mode === "login" && (
         <p className="text-xs text-muted-foreground text-center">
-          If your account isn&apos;t verified yet, we&apos;ll email you a confirmation link when
-          you sign in.
+          Sign in with the email and password you registered with.
         </p>
       )}
     </form>

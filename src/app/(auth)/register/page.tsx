@@ -15,7 +15,7 @@ function RegisterForm() {
       <CardHeader>
         <CardTitle>Create Account</CardTitle>
         <CardDescription>
-          Create your account — confirm your email before you can sign in
+          Create your account — sign up and start instantly
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">

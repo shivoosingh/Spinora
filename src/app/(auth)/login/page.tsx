@@ -26,9 +26,7 @@ function LoginForm() {
     <Card>
       <CardHeader>
         <CardTitle>Welcome Back</CardTitle>
-        <CardDescription>
-          Sign in with your email and password after verifying your account
-        </CardDescription>
+        <CardDescription>Sign in with your email and password</CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
         <EmailAuthForm mode="login" redirect={redirect} />
