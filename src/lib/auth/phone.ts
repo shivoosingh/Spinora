@@ -64,3 +64,12 @@ export function formatPhoneDisplay(e164: string): string {
   if (digits.length <= 4) return e164;
   return `+${digits.slice(0, 3)} ${digits.slice(3)}`;
 }
+
+/** E.164 plus common stored variants (+977..., 977..., etc.) */
+export function phoneLookupVariants(input: string): string[] {
+  const parsed = parseInternationalPhone(input);
+  if (!parsed) return [];
+
+  const digits = parsed.replace(/\D/g, "");
+  return [...new Set([parsed, `+${digits}`, digits])];
+}

@@ -11,7 +11,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           <Image src="/logo.jpeg" alt={SITE_NAME} width={200} height={200} className="mx-auto rounded-2xl glow-purple mb-8" priority />
           <h2 className="text-3xl font-bold gradient-text mb-4">{SITE_NAME}</h2>
           <p className="text-muted-foreground max-w-sm">
-            Sign in with your phone, WhatsApp, or Gmail. Premium gaming support with VIP rewards and 24/7 live chat.
+            Sign in with email. We save your email and phone for support and account recovery.
           </p>
         </div>
       </div>

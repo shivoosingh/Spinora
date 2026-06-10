@@ -1,50 +1,99 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { parseInternationalPhone, isValidOtpCode } from "@/lib/auth/phone";
+import { parseInternationalPhone, isValidOtpCode, PHONE_EXAMPLES } from "@/lib/auth/phone";
+import { isEmailIdentifier, normalizeEmail, maskEmail, formatAuthErrorMessage } from "@/lib/auth/identifier";
+import { resolveLoginEmail, isPhoneAvailable, isEmailAvailable, saveUserContactInfo } from "@/lib/actions/auth";
 
 interface OtpAuthFormProps {
   mode: "login" | "register";
-  channel: "phone" | "whatsapp";
   redirect?: string;
   referralCodeFromUrl?: string | null;
 }
 
-export function OtpAuthForm({ mode, channel, redirect = "/", referralCodeFromUrl }: OtpAuthFormProps) {
+export function OtpAuthForm({ mode, redirect = "/", referralCodeFromUrl }: OtpAuthFormProps) {
   const router = useRouter();
   const [step, setStep] = useState<"details" | "otp">("details");
   const [fullName, setFullName] = useState("");
+  const [identifier, setIdentifier] = useState("");
   const [phoneInput, setPhoneInput] = useState("");
+  const [emailInput, setEmailInput] = useState("");
   const [referralCode, setReferralCode] = useState(referralCodeFromUrl || "");
   const [otp, setOtp] = useState("");
-  const [e164Phone, setE164Phone] = useState("");
+  const [targetEmail, setTargetEmail] = useState("");
+  const [pendingPhone, setPendingPhone] = useState("");
+  const [pendingFullName, setPendingFullName] = useState("");
   const [loading, setLoading] = useState(false);
+  const otpInputRef = useRef<HTMLInputElement>(null);
 
-  const isWhatsApp = channel === "whatsapp";
-  const numberLabel = isWhatsApp ? "WhatsApp Number" : "Phone Number";
-  const codeHint = isWhatsApp
-    ? "Enter the 6-digit code sent to your WhatsApp"
-    : "Enter the 6-digit code sent via SMS";
+  useEffect(() => {
+    if (step === "otp") {
+      otpInputRef.current?.focus();
+      otpInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [step]);
 
   async function handleSendCode(e: React.FormEvent) {
     e.preventDefault();
-    const phone = parseInternationalPhone(phoneInput);
-    if (!phone) {
-      toast.error("Enter a valid number with country code, e.g. +44 7911 123456");
-      return;
-    }
-    if (mode === "register" && !fullName.trim()) {
-      toast.error("Please enter your full name");
-      return;
+    setLoading(true);
+
+    let email = "";
+    let phone: string | null = null;
+
+    if (mode === "register") {
+      if (!fullName.trim()) {
+        toast.error("Please enter your full name");
+        setLoading(false);
+        return;
+      }
+      if (!isEmailIdentifier(emailInput)) {
+        toast.error("Enter a valid Gmail or email address");
+        setLoading(false);
+        return;
+      }
+      phone = parseInternationalPhone(phoneInput);
+      if (!phone) {
+        toast.error("Enter a valid phone with country code, e.g. +44 7911 123456");
+        setLoading(false);
+        return;
+      }
+      email = normalizeEmail(emailInput);
+
+      const [phoneCheck, emailCheck] = await Promise.all([
+        isPhoneAvailable(phone),
+        isEmailAvailable(email),
+      ]);
+      if (!phoneCheck.available) {
+        toast.error(phoneCheck.error ?? "This phone number is already registered");
+        setLoading(false);
+        return;
+      }
+      if (!emailCheck.available) {
+        toast.error(emailCheck.error ?? "This email is already registered");
+        setLoading(false);
+        return;
+      }
+    } else {
+      // Email typed directly on login — use it; phone goes through lookup
+      if (isEmailIdentifier(identifier)) {
+        email = normalizeEmail(identifier);
+      } else {
+        const resolved = await resolveLoginEmail(identifier);
+        if (!resolved.email) {
+          toast.error(resolved.error ?? "Account not found");
+          setLoading(false);
+          return;
+        }
+        email = resolved.email;
+      }
     }
 
-    setLoading(true);
     const supabase = createClient();
     if (!supabase) {
       toast.error("Authentication is not configured");
@@ -52,22 +101,18 @@ export function OtpAuthForm({ mode, channel, redirect = "/", referralCodeFromUrl
       return;
     }
 
-    const metadata: Record<string, string> = {};
+    const metadata: Record<string, string> = { auth_method: "email_otp" };
     if (mode === "register") {
       metadata.full_name = fullName.trim();
+      metadata.phone = phone!;
       const ref = referralCode.trim() || referralCodeFromUrl || "";
       if (ref) metadata.referral_code = ref;
     }
-    if (isWhatsApp) {
-      metadata.whatsapp_number = phone;
-      metadata.auth_method = "whatsapp";
-    } else {
-      metadata.auth_method = "phone";
-    }
 
     const { error } = await supabase.auth.signInWithOtp({
-      phone,
+      email,
       options: {
+        shouldCreateUser: mode === "register",
         data: Object.keys(metadata).length > 0 ? metadata : undefined,
       },
     });
@@ -75,13 +120,17 @@ export function OtpAuthForm({ mode, channel, redirect = "/", referralCodeFromUrl
     setLoading(false);
 
     if (error) {
-      toast.error(error.message);
+      toast.error(formatAuthErrorMessage(error.message));
       return;
     }
 
-    setE164Phone(phone);
+    setTargetEmail(email);
+    if (mode === "register" && phone) {
+      setPendingPhone(phone);
+      setPendingFullName(fullName.trim());
+    }
     setStep("otp");
-    toast.success(isWhatsApp ? "Verification code sent to WhatsApp!" : "Verification code sent via SMS!");
+    toast.success(`Verification code sent to ${maskEmail(email)}`);
   }
 
   async function handleVerifyOtp(e: React.FormEvent) {
@@ -100,17 +149,31 @@ export function OtpAuthForm({ mode, channel, redirect = "/", referralCodeFromUrl
     }
 
     const { error } = await supabase.auth.verifyOtp({
-      phone: e164Phone,
+      email: targetEmail,
       token: otp.trim(),
-      type: "sms",
+      type: "email",
     });
 
-    setLoading(false);
-
     if (error) {
-      toast.error(error.message);
+      setLoading(false);
+      toast.error(formatAuthErrorMessage(error.message));
       return;
     }
+
+    if (mode === "register" && pendingPhone) {
+      const saved = await saveUserContactInfo(
+        pendingPhone,
+        pendingFullName,
+        targetEmail
+      );
+      if (!saved.ok) {
+        setLoading(false);
+        toast.error(saved.error ?? "Account created but phone was not saved");
+        return;
+      }
+    }
+
+    setLoading(false);
 
     toast.success(mode === "register" ? "Account created! Welcome to Spinora." : "Welcome back!");
     router.push(redirect);
@@ -119,56 +182,92 @@ export function OtpAuthForm({ mode, channel, redirect = "/", referralCodeFromUrl
 
   if (step === "otp") {
     return (
-      <form onSubmit={handleVerifyOtp} className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Code sent to <strong className="text-foreground">{e164Phone}</strong>
-        </p>
+      <div className="space-y-4">
+        <div className="rounded-xl border border-orange-500/40 bg-orange-500/10 p-4 text-center">
+          <p className="text-base font-semibold text-orange-400">Enter your 6-digit code</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            Sent to <strong className="text-foreground">{maskEmail(targetEmail)}</strong>
+          </p>
+        </div>
+        <form onSubmit={handleVerifyOtp} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="otp">Verification Code</Label>
+            <Input
+              ref={otpInputRef}
+              id="otp"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={otp}
+              onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              required
+              placeholder="123456"
+              maxLength={6}
+              className="text-center text-2xl tracking-[0.4em] h-14 font-mono"
+            />
+            <p className="text-xs text-muted-foreground text-center">
+              Paste the code from your email — do not click the link
+            </p>
+          </div>
+          <Button type="submit" className="w-full" disabled={loading || otp.length < 6}>
+            {loading ? "Verifying..." : mode === "register" ? "Create Account" : "Sign In"}
+          </Button>
+          <button
+            type="button"
+            onClick={() => {
+              setStep("details");
+              setOtp("");
+            }}
+            className="w-full text-sm text-muted-foreground hover:text-primary"
+          >
+            Back — send a new code
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  if (mode === "login") {
+    return (
+      <form onSubmit={handleSendCode} className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="otp">Verification Code</Label>
+          <Label htmlFor="identifier">Email or Phone Number</Label>
           <Input
-            id="otp"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            value={otp}
-            onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            id="identifier"
+            type="text"
+            inputMode="email"
+            autoComplete="username"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
             required
-            placeholder="123456"
-            maxLength={6}
-            className="text-center text-lg tracking-widest"
+            placeholder="you@gmail.com or +91 98765 43210"
+            className="font-mono text-base"
           />
-          <p className="text-xs text-muted-foreground">{codeHint}</p>
+          <p className="text-xs text-muted-foreground">
+            We&apos;ll send a 6-digit code to the Gmail/email linked to your account
+          </p>
         </div>
         <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? "Verifying..." : mode === "register" ? "Create Account" : "Sign In"}
+          {loading ? "Sending code..." : "Send Code to Email"}
         </Button>
-        <button
-          type="button"
-          onClick={() => setStep("details")}
-          className="w-full text-sm text-muted-foreground hover:text-primary"
-        >
-          Change number
-        </button>
       </form>
     );
   }
 
   return (
     <form onSubmit={handleSendCode} className="space-y-4">
-      {mode === "register" && (
-        <div className="space-y-2">
-          <Label htmlFor="name">Full Name</Label>
-          <Input
-            id="name"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            required
-            placeholder="John Doe"
-          />
-        </div>
-      )}
+      <div className="space-y-2">
+        <Label htmlFor="name">Full Name</Label>
+        <Input
+          id="name"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          required
+          placeholder="John Doe"
+        />
+      </div>
 
       <div className="space-y-2">
-        <Label htmlFor="phone">{numberLabel}</Label>
+        <Label htmlFor="phone">Phone Number</Label>
         <Input
           id="phone"
           type="tel"
@@ -177,35 +276,43 @@ export function OtpAuthForm({ mode, channel, redirect = "/", referralCodeFromUrl
           value={phoneInput}
           onChange={(e) => setPhoneInput(e.target.value)}
           required
-          placeholder="+1 555 123 4567"
+          placeholder={PHONE_EXAMPLES[2]}
           className="font-mono text-base"
         />
         <p className="text-xs text-muted-foreground">
-          {isWhatsApp
-            ? "Enter your full WhatsApp number with country code — any country works (e.g. +44 7911 123456)."
-            : "Enter your full mobile number with country code — any country works (e.g. +91 98765 43210)."}
+          Include country code — any country works (e.g. {PHONE_EXAMPLES[1]})
         </p>
       </div>
 
-      {mode === "register" && (
-        <div className="space-y-2">
-          <Label htmlFor="referral">Referral Code (optional)</Label>
-          <Input
-            id="referral"
-            value={referralCode}
-            onChange={(e) => setReferralCode(e.target.value)}
-            placeholder="Enter referral code"
-            readOnly={!!referralCodeFromUrl}
-          />
-        </div>
-      )}
+      <div className="space-y-2">
+        <Label htmlFor="email">Gmail / Email</Label>
+        <Input
+          id="email"
+          type="email"
+          autoComplete="email"
+          value={emailInput}
+          onChange={(e) => setEmailInput(e.target.value)}
+          required
+          placeholder="you@gmail.com"
+        />
+        <p className="text-xs text-muted-foreground">
+          Your login code will be sent to this email — not by SMS
+        </p>
+      </div>
 
-      <Button
-        type="submit"
-        className={`w-full ${isWhatsApp ? "bg-green-600 hover:bg-green-700" : ""}`}
-        disabled={loading}
-      >
-        {loading ? "Sending code..." : "Send Verification Code"}
+      <div className="space-y-2">
+        <Label htmlFor="referral">Referral Code (optional)</Label>
+        <Input
+          id="referral"
+          value={referralCode}
+          onChange={(e) => setReferralCode(e.target.value)}
+          placeholder="Enter referral code"
+          readOnly={!!referralCodeFromUrl}
+        />
+      </div>
+
+      <Button type="submit" className="w-full" disabled={loading}>
+        {loading ? "Sending code..." : "Send Code to Email"}
       </Button>
     </form>
   );

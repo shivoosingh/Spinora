@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
+import { syncProfileFromAuthMetadata } from "@/lib/actions/auth";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
   const tokenHash = searchParams.get("token_hash");
   const type = searchParams.get("type") as EmailOtpType | null;
-  const redirect = searchParams.get("redirect") || "/";
+  const redirect = searchParams.get("redirect") || "/dashboard";
   const referralCode = searchParams.get("ref");
-  const safeRedirect = redirect.startsWith("/") ? redirect : "/";
+  const safeRedirect = redirect.startsWith("/") ? redirect : "/dashboard";
 
   const supabase = await createClient();
 
@@ -28,6 +29,8 @@ export async function GET(request: Request) {
   } else {
     return NextResponse.redirect(`${origin}/login?error=auth_callback_failed`);
   }
+
+  await syncProfileFromAuthMetadata();
 
   if (referralCode?.trim()) {
     const {

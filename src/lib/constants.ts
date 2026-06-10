@@ -1,4 +1,7 @@
 export const SITE_NAME = "Spinora";
+
+/** VIP points awarded per successful referral */
+export const REFERRAL_REWARD_POINTS = 10;
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://spinora.com";
 export const SITE_DESCRIPTION =
   "Premium gaming support and account platform. Request game accounts, VIP rewards, live chat support, and exclusive promotions.";

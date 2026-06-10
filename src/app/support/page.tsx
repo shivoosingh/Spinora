@@ -13,7 +13,7 @@ const faqs = [
   { q: "How do I request a game account?", a: "Create a free account, navigate to your dashboard, and submit a game request. Our team will process it within 24 hours." },
   { q: "How does the VIP program work?", a: "Earn VIP points through game requests and referrals. Points unlock Bronze, Silver, Gold, and Platinum tiers with increasing benefits." },
   { q: "Is live chat available 24/7?", a: "Yes! Use the floating chat widget on any page or visit your dashboard messages for real-time support." },
-  { q: "How do referrals work?", a: "Share your unique referral code. When friends sign up, you earn 100 VIP points per referral." },
+  { q: "How do referrals work?", a: "Share your unique referral code. When friends sign up, you earn 10 VIP points per referral." },
 ];
 
 export default function SupportPage() {

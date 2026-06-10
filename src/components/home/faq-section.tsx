@@ -25,7 +25,7 @@ const FAQS = [
   },
   {
     q: "How do referrals work?",
-    a: "Share your unique referral link. When friends sign up, you earn 100 VIP points per referral.",
+    a: "Share your unique referral link. When friends sign up, you earn 10 VIP points per referral.",
   },
   {
     q: "How do I cash out or redeem rewards?",

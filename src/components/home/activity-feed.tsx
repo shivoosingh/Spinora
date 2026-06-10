@@ -11,7 +11,7 @@ const activities = [
   { type: "vip", user: "Diana L.", action: "reached Gold VIP tier", time: new Date(Date.now() - 300000).toISOString(), icon: Crown },
   { type: "signup", user: "Chris P.", action: "joined via referral", time: new Date(Date.now() - 600000).toISOString(), icon: UserPlus },
   { type: "request", user: "Emma W.", action: "completed Juwa account setup", time: new Date(Date.now() - 900000).toISOString(), icon: Gamepad2 },
-  { type: "vip", user: "Ryan B.", action: "earned 100 referral points", time: new Date(Date.now() - 1200000).toISOString(), icon: Crown },
+  { type: "vip", user: "Ryan B.", action: "earned 10 referral points", time: new Date(Date.now() - 1200000).toISOString(), icon: Crown },
 ];
 
 export function ActivityFeed() {

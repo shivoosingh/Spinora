@@ -3,7 +3,7 @@
 const TICKER_ITEMS: [string, string, string][] = [
   ["Alex M.", "won $240 on", "Fire Kirin"],
   ["Diana L.", "reached", "Gold VIP 🏆"],
-  ["Chris P.", "joined via referral — earned", "+100 pts"],
+  ["Chris P.", "joined via referral — earned", "+10 pts"],
   ["Emma W.", "set up account on", "Juwa"],
   ["Ryan B.", "claimed", "$50 bonus"],
   ["Marco T.", "won $180 on", "Panda Master"],

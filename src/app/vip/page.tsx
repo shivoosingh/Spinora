@@ -59,7 +59,7 @@ export default function VipPage() {
             <CardContent className="grid sm:grid-cols-3 gap-6">
               {[
                 { action: "Game Account Request", points: 50, progress: 10 },
-                { action: "Successful Referral", points: 100, progress: 20 },
+                { action: "Successful Referral", points: 10, progress: 20 },
                 { action: "Monthly Activity Bonus", points: 200, progress: 40 },
               ].map((item) => (
                 <div key={item.action}>

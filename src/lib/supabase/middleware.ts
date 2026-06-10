@@ -44,7 +44,17 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isAuth && path !== "/auth/callback") {
+  const emailConfirmed = Boolean(user?.email_confirmed_at ?? user?.confirmed_at);
+  if (user && isProtected && !emailConfirmed) {
+    await supabase.auth.signOut();
+    const url = request.nextUrl.clone();
+    url.pathname = "/login";
+    url.searchParams.set("error", "email_not_confirmed");
+    url.searchParams.set("redirect", path);
+    return NextResponse.redirect(url);
+  }
+
+  if (user && emailConfirmed && isAuth && path !== "/auth/callback") {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);

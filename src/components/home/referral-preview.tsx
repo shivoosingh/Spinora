@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { REFERRAL_REWARD_POINTS } from "@/lib/constants";
 import { motion } from "framer-motion";
 import { Share2, Users, Gift } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,7 @@ export function ReferralPreview() {
         >
           {[
             { icon: Share2, label: "Share Link", value: "1-Click" },
-            { icon: Users, label: "Friends Join", value: "+100 pts" },
+            { icon: Users, label: "Friends Join", value: `+${REFERRAL_REWARD_POINTS} pts` },
             { icon: Gift, label: "Earn Rewards", value: "Up to 25%" },
           ].map((item) => {
             const Icon = item.icon;
