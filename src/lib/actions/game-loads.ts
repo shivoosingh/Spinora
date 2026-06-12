@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createNotification } from "@/lib/actions/notifications";
-import { getJuwaAdminPanelUrl, getVegasAdminPanelUrl, isWalletLoadEnabledForGame, WALLET_LOAD_LIMITS } from "@/lib/game-automation/config";
+import { getJuwaAdminPanelUrl, getVegasAdminPanelUrl, getGameVaultAdminPanelUrl, isWalletLoadEnabledForGame, WALLET_LOAD_LIMITS } from "@/lib/game-automation/config";
 import type { GameLoadWalletType } from "@/lib/game-automation/types";
 
 export async function requestGameAccountCreate(input: {
@@ -314,6 +314,12 @@ export async function getAdminPanelUrlForGame(gameSlug: string) {
   if (gameSlug === "vegas-sweeps") {
     const url = getVegasAdminPanelUrl();
     if (!url) return { error: "VEGAS_ADMIN_URL not configured" };
+    return { url };
+  }
+
+  if (gameSlug === "game-vault") {
+    const url = getGameVaultAdminPanelUrl();
+    if (!url) return { error: "GAMEVAULT_ADMIN_URL not configured" };
     return { url };
   }
 
