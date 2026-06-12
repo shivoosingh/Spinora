@@ -22,4 +22,5 @@ export interface UserLevelProgress {
   points_earned: number;
   reward_granted: boolean;
   completed_at: string | null;
+  reward_claimed_at: string | null;
 }

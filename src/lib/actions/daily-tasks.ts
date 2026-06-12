@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { creditUserWallet } from "@/lib/actions/wallet";
 import { createNotification } from "@/lib/actions/notifications";
 import { isTaskUnlocked as checkTaskUnlocked } from "@/lib/tasks/utils";
 import {
@@ -13,6 +12,7 @@ import {
 } from "@/lib/tasks/definitions";
 import type { TaskSubmission, UserLevelProgress } from "@/lib/tasks/types";
 import { notifyAdminOfTaskSubmission } from "@/lib/telegram/notify-admin-task-submission";
+import { notifyAdminOfTaskRewardClaim } from "@/lib/telegram/notify-admin-task-claim";
 
 export type { TaskSubmission, UserLevelProgress, TaskSubmissionStatus, LevelStatus } from "@/lib/tasks/types";
 
@@ -53,6 +53,12 @@ export async function getTaskBoard(userId?: string): Promise<TaskBoardData | { e
   }
 
   await ensureUserLevels(targetId);
+
+  // Lazily flip locked → active for any level whose 24h timer has elapsed.
+  await supabase.rpc("unlock_due_task_levels", { p_user_id: targetId }).then(
+    () => {},
+    () => {}
+  );
 
   const [{ data: levelProgress }, { data: submissions }] = await Promise.all([
     supabase.from("user_task_levels").select("*").eq("user_id", targetId).order("level"),
@@ -190,35 +196,83 @@ async function tryCompleteLevel(userId: string, level: number) {
 
   const { data: levelRow } = await supabase
     .from("user_task_levels")
-    .select("reward_granted")
+    .select("reward_granted, status")
     .eq("user_id", userId)
     .eq("level", level)
     .single();
 
-  if (levelRow?.reward_granted) return;
+  if (levelRow?.reward_granted || levelRow?.status === "completed") return;
 
+  // Mark the level completed but DO NOT grant the reward — the user must claim it.
   await supabase.rpc("upsert_user_task_level", {
     p_user_id: userId,
     p_level: level,
     p_points: points,
     p_status: "completed",
-    p_reward_granted: true,
+    p_reward_granted: false,
   });
-
-  await creditUserWallet(
-    userId,
-    levelMeta.cashReward,
-    "cashout",
-    "daily_task",
-    `Level ${level} task reward — ${levelMeta.name}`
-  );
 
   await createNotification(
     userId,
     `Level ${level} complete! 🎉`,
-    `$${levelMeta.cashReward} added to your Cashout wallet. Level ${Math.min(level + 1, 10)} is now unlocked!`,
+    `All tasks approved — claim your $${levelMeta.cashReward} reward to your Bonus wallet.`,
     "success"
   );
+}
+
+export async function claimLevelReward(level: number) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const levelMeta = TASK_LEVELS.find((l) => l.level === level);
+  if (!levelMeta) return { error: "Invalid level" };
+
+  const { data: levelRow } = await supabase
+    .from("user_task_levels")
+    .select("status, reward_granted")
+    .eq("user_id", user.id)
+    .eq("level", level)
+    .single();
+
+  if (!levelRow) return { error: "Level not found" };
+  if (levelRow.status !== "completed") return { error: "Finish all level tasks first" };
+  if (levelRow.reward_granted) return { error: "Reward already claimed" };
+
+  const { data: reward, error } = await supabase.rpc("claim_task_reward", {
+    p_user_id: user.id,
+    p_level: level,
+  });
+
+  if (error) {
+    if (error.message.includes("claim_task_reward")) {
+      return { error: "Run supabase/daily-tasks-claim.sql in Supabase SQL Editor first." };
+    }
+    return { error: error.message };
+  }
+
+  const amount = Number(reward ?? levelMeta.cashReward);
+
+  await createNotification(
+    user.id,
+    "Reward claimed! 🎉",
+    `$${amount} added to your Bonus wallet. Level ${Math.min(level + 1, 10)} unlocks in 24 hours.`,
+    "success"
+  );
+
+  void notifyAdminOfTaskRewardClaim({
+    userId: user.id,
+    level,
+    amount,
+    levelName: levelMeta.name,
+  });
+
+  revalidatePath("/dashboard/tasks");
+  revalidatePath("/dashboard");
+  revalidatePath("/admin/tasks");
+  return { success: true, amount };
 }
 
 export async function adminReviewTaskSubmission(

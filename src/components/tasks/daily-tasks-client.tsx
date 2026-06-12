@@ -1,21 +1,39 @@
 "use client";
 
-import { useState } from "react";
-import { Target, Trophy, HelpCircle, Lock } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Target, Trophy, HelpCircle, Lock, Gift, Loader2, Clock } from "lucide-react";
+import { toast } from "sonner";
 import { TaskCard } from "@/components/tasks/task-card";
 import { TASK_DEFINITIONS, TASK_FAQ, TASK_LEVELS } from "@/lib/tasks/definitions";
-import type { TaskBoardData } from "@/lib/actions/daily-tasks";
+import { getLevelUnlockInfo } from "@/lib/tasks/utils";
+import { claimLevelReward, type TaskBoardData } from "@/lib/actions/daily-tasks";
 import { cn } from "@/lib/utils";
 
 type Tab = "active" | "rewards" | "faq";
 
 interface DailyTasksClientProps {
   board: TaskBoardData;
+  onReload?: () => void | Promise<void>;
 }
 
-export function DailyTasksClient({ board }: DailyTasksClientProps) {
+function formatCountdown(ms: number): string {
+  const totalMinutes = Math.max(0, Math.ceil(ms / 60000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+export function DailyTasksClient({ board, onReload }: DailyTasksClientProps) {
   const [tab, setTab] = useState<Tab>("active");
   const [selectedLevel, setSelectedLevel] = useState(board.activeLevel);
+  const [claiming, setClaiming] = useState(false);
+  // Re-render once a minute so unlock countdowns stay fresh.
+  const [, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(id);
+  }, []);
 
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: "active", label: "Active", icon: Target },
@@ -30,6 +48,21 @@ export function DailyTasksClient({ board }: DailyTasksClientProps) {
   const completedLevels = board.levelProgress.filter(
     (p) => p.status === "completed" && p.reward_granted
   );
+
+  const canClaim = levelStat?.status === "completed" && !levelStat?.reward_granted;
+  const unlockInfo = getLevelUnlockInfo(selectedLevel, board.levelProgress);
+
+  async function handleClaim() {
+    setClaiming(true);
+    const result = await claimLevelReward(selectedLevel);
+    if (result.error) {
+      toast.error(result.error);
+    } else {
+      toast.success(`$${result.amount} added to your Bonus wallet!`);
+    }
+    setClaiming(false);
+    await onReload?.();
+  }
 
   return (
     <div>
@@ -72,6 +105,7 @@ export function DailyTasksClient({ board }: DailyTasksClientProps) {
               const isLocked = stat?.status === "locked";
               const isActive = stat?.status === "active";
               const isDone = stat?.status === "completed";
+              const isClaimable = isDone && !stat?.reward_granted;
               return (
                 <button
                   key={lvl.level}
@@ -88,7 +122,8 @@ export function DailyTasksClient({ board }: DailyTasksClientProps) {
                   {isLocked && <Lock className="h-3 w-3" />}
                   L{lvl.level}
                   {isActive && <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />}
-                  {isDone && <span className="text-emerald-400">✓</span>}
+                  {isClaimable && <Gift className="h-3 w-3 text-emerald-400" />}
+                  {isDone && !isClaimable && <span className="text-emerald-400">✓</span>}
                 </button>
               );
             })}
@@ -109,8 +144,43 @@ export function DailyTasksClient({ board }: DailyTasksClientProps) {
                 </div>
               </div>
               {levelStat?.status === "locked" && (
-                <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
-                  <Lock className="h-3 w-3" /> Complete Level {selectedLevel - 1} to unlock these tasks
+                unlockInfo.waiting ? (
+                  <p className="text-xs text-amber-400 mt-2 flex items-center gap-1">
+                    <Clock className="h-3 w-3" /> Unlocks in {formatCountdown(unlockInfo.msRemaining)} — come back tomorrow
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                    <Lock className="h-3 w-3" /> Complete &amp; claim Level {selectedLevel - 1} to unlock these tasks
+                  </p>
+                )
+              )}
+
+              {canClaim && (
+                <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm text-emerald-200">
+                      <Gift className="h-4 w-4" />
+                      <span>All tasks approved! Claim your ${levelMeta.cashReward} reward.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleClaim}
+                      disabled={claiming}
+                      className="inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-emerald-400 px-4 py-2 text-sm font-bold text-black disabled:opacity-60"
+                    >
+                      {claiming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Gift className="h-4 w-4" />}
+                      Claim Reward
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-emerald-300/70 mt-2">
+                    Reward goes to your Bonus wallet. The next level unlocks 24 hours after you claim.
+                  </p>
+                </div>
+              )}
+
+              {levelStat?.status === "completed" && levelStat?.reward_granted && (
+                <p className="text-xs text-emerald-400 mt-2 flex items-center gap-1">
+                  <Trophy className="h-3 w-3" /> Reward claimed — ${levelMeta.cashReward} added to your Bonus wallet
                 </p>
               )}
             </div>

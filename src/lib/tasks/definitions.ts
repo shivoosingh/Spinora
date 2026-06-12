@@ -132,15 +132,15 @@ export function getLevelMeta(level: number): TaskLevelMeta | undefined {
 export const TASK_FAQ = [
   {
     q: "How do daily tasks work?",
-    a: "Complete tasks level by level. Level 1 unlocks first; finish all tasks and get admin approval to unlock Level 2. Each level pays real cash to your Cashout wallet.",
+    a: "Complete one level per day. Finish every task in a level and get admin approval, then press Claim Reward to add the cash to your Bonus wallet. The next level unlocks 24 hours after you claim.",
   },
   {
     q: "Why is my task pending?",
     a: "An admin verifies your proof within 24 hours. VIP players may get faster review. Make sure your proof shows your Spinora username.",
   },
   {
-    q: "Can I do tasks from higher levels?",
-    a: "You can see all levels, but tasks stay locked until you complete the previous level and collect your reward.",
+    q: "Why can't I open the next level yet?",
+    a: "Levels are one per day. After you claim a level's reward, the next level stays locked for 24 hours so you can come back tomorrow.",
   },
   {
     q: "What proof should I submit?",
@@ -148,6 +148,6 @@ export const TASK_FAQ = [
   },
   {
     q: "When do I get paid?",
-    a: "When every task in a level is approved, the cash reward is added to your Cashout wallet automatically.",
+    a: "Once every task in a level is approved, a Claim Reward button appears. Press it and the cash is added to your Bonus wallet instantly.",
   },
 ];
