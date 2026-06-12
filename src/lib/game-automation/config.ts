@@ -22,6 +22,14 @@ export function getGameVaultAdminPanelUrl(): string | null {
   return process.env.GAMEVAULT_ADMIN_URL?.trim() || "https://agent.gamevault999.com/login";
 }
 
+/**
+ * Gameroom agent panel URL. Defaults to the public login page so the feature
+ * is enabled without extra config; override with GAMEROOM_ADMIN_URL.
+ */
+export function getGameroomAdminPanelUrl(): string | null {
+  return process.env.GAMEROOM_ADMIN_URL?.trim() || "https://agentserver1.gameroom777.com/admin/login";
+}
+
 export function getAutomationSecret(): string | null {
   return process.env.GAME_AUTOMATION_SECRET?.trim() || null;
 }
@@ -31,6 +39,7 @@ export function isWalletLoadEnabledForGame(slug: string): boolean {
   if (slug === "juwa") return Boolean(getJuwaAdminPanelUrl());
   if (slug === "vegas-sweeps") return Boolean(getVegasAdminPanelUrl());
   if (slug === "game-vault") return Boolean(getGameVaultAdminPanelUrl());
+  if (slug === "gameroom") return Boolean(getGameroomAdminPanelUrl());
   return false;
 }
 
