@@ -5,9 +5,13 @@ export function getJuwaAdminPanelUrl(): string | null {
   return process.env.JUWA_ADMIN_URL?.trim() || null;
 }
 
-/** Server-only Vegas Sweeps agent panel URL (never NEXT_PUBLIC) */
+/**
+ * Vegas Sweeps agent panel URL. Defaults to the public login page so the
+ * feature is enabled without extra config; override with VEGAS_ADMIN_URL.
+ * (The login page URL is not secret — agent credentials live only in the worker.)
+ */
 export function getVegasAdminPanelUrl(): string | null {
-  return process.env.VEGAS_ADMIN_URL?.trim() || null;
+  return process.env.VEGAS_ADMIN_URL?.trim() || "https://agent.lasvegassweeps.com/login";
 }
 
 export function getAutomationSecret(): string | null {
