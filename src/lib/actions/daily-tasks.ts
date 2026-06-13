@@ -11,7 +11,7 @@ import {
   type TaskLevelMeta,
 } from "@/lib/tasks/definitions";
 import type { TaskSubmission, UserLevelProgress } from "@/lib/tasks/types";
-import { normalizeLevelProgress, resolveActiveLevel } from "@/lib/tasks/level-progress";
+import { normalizeLevelProgress, resolveActiveLevel, computeTaskCashBalances } from "@/lib/tasks/level-progress";
 import { notifyAdminOfTaskSubmission } from "@/lib/telegram/notify-admin-task-submission";
 import { notifyAdminOfTaskRewardClaim } from "@/lib/telegram/notify-admin-task-claim";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -25,6 +25,8 @@ export interface TaskBoardData {
   submissions: TaskSubmission[];
   totalPointsEarned: number;
   totalCashEarned: number;
+  /** Unclaimed level rewards ready to press Claim (resets to 0 after claim). */
+  availableCashBalance: number;
   activeLevel: number;
 }
 
@@ -82,12 +84,7 @@ export async function getTaskBoard(userId?: string): Promise<TaskBoardData | { e
     .filter((s) => s.status === "approved")
     .reduce((sum, s) => sum + s.points_awarded, 0);
 
-  const totalCashEarned = progress
-    .filter((l) => l.reward_granted)
-    .reduce((sum, l) => {
-      const meta = TASK_LEVELS.find((t) => t.level === l.level);
-      return sum + (meta?.cashReward ?? 0);
-    }, 0);
+  const { totalCashEarned, availableCashBalance } = computeTaskCashBalances(progress);
 
   return {
     levels: TASK_LEVELS,
@@ -95,6 +92,7 @@ export async function getTaskBoard(userId?: string): Promise<TaskBoardData | { e
     submissions: subs,
     totalPointsEarned,
     totalCashEarned,
+    availableCashBalance,
     activeLevel,
   };
 }

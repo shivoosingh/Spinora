@@ -9,7 +9,7 @@ import { useDashboardSession } from "@/lib/dashboard/use-dashboard-session";
 import { TASK_LEVELS } from "@/lib/tasks/definitions";
 import type { TaskBoardData } from "@/lib/actions/daily-tasks";
 import type { TaskSubmission, UserLevelProgress } from "@/lib/tasks/types";
-import { normalizeLevelProgress, resolveActiveLevel } from "@/lib/tasks/level-progress";
+import { normalizeLevelProgress, resolveActiveLevel, computeTaskCashBalances } from "@/lib/tasks/level-progress";
 
 export function TasksPageClient() {
   const { supabase, userId, ready } = useDashboardSession();
@@ -56,12 +56,7 @@ export function TasksPageClient() {
       .filter((s) => s.status === "approved")
       .reduce((sum, s) => sum + s.points_awarded, 0);
 
-    const totalCashEarned = progress
-      .filter((l) => l.reward_granted)
-      .reduce((sum, l) => {
-        const meta = TASK_LEVELS.find((t) => t.level === l.level);
-        return sum + (meta?.cashReward ?? 0);
-      }, 0);
+    const { totalCashEarned, availableCashBalance } = computeTaskCashBalances(progress);
 
     setBoard({
       levels: TASK_LEVELS,
@@ -69,6 +64,7 @@ export function TasksPageClient() {
       submissions: subs,
       totalPointsEarned,
       totalCashEarned,
+      availableCashBalance,
       activeLevel,
     });
   }, [supabase, userId]);

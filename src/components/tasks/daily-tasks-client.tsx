@@ -87,11 +87,30 @@ export function DailyTasksClient({ board, onReload }: DailyTasksClientProps) {
         <div className="absolute right-4 top-4 opacity-20">
           <Target className="h-24 w-24 text-orange-500" />
         </div>
-        <p className="text-3xl sm:text-4xl font-bold text-white mb-1">
-          ${board.totalCashEarned.toLocaleString()}
-        </p>
-        <p className="text-sm text-muted-foreground">Total Cash Earned</p>
-        <p className="text-xs text-amber-400 mt-2">{board.totalPointsEarned} total points earned</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto mb-2">
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+            <p
+              className={cn(
+                "text-3xl sm:text-4xl font-bold mb-1",
+                board.availableCashBalance > 0 ? "text-emerald-400" : "text-white"
+              )}
+            >
+              ${board.availableCashBalance.toLocaleString()}
+            </p>
+            <p className="text-sm text-muted-foreground">Available to Claim</p>
+            {board.availableCashBalance > 0 && (
+              <p className="text-[11px] text-emerald-300/80 mt-1">Press Claim Reward below</p>
+            )}
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+            <p className="text-3xl sm:text-4xl font-bold text-white mb-1">
+              ${board.totalCashEarned.toLocaleString()}
+            </p>
+            <p className="text-sm text-muted-foreground">Total Cash Earned</p>
+            <p className="text-[11px] text-muted-foreground/80 mt-1">Paid to Bonus wallet after claim</p>
+          </div>
+        </div>
+        <p className="text-xs text-amber-400">{board.totalPointsEarned} total points earned</p>
 
         {claimableLevel && claimableMeta && (
           <div className="relative mt-4 rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-4">

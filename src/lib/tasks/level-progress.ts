@@ -1,5 +1,22 @@
+import { TASK_LEVELS } from "@/lib/tasks/definitions";
 import { TASK_UNLOCK_HOURS } from "@/lib/tasks/utils";
 import type { LevelStatus, UserLevelProgress } from "@/lib/tasks/types";
+
+export function computeTaskCashBalances(progress: UserLevelProgress[]) {
+  let totalCashEarned = 0;
+  let availableCashBalance = 0;
+
+  for (const row of progress) {
+    const reward = TASK_LEVELS.find((t) => t.level === row.level)?.cashReward ?? 0;
+    if (row.reward_granted) {
+      totalCashEarned += reward;
+    } else if (row.status === "completed") {
+      availableCashBalance += reward;
+    }
+  }
+
+  return { totalCashEarned, availableCashBalance };
+}
 
 /** Enforce claim-first + 24h rules even if DB still has the old auto-unlock function. */
 export function normalizeLevelProgress(progress: UserLevelProgress[]): UserLevelProgress[] {
