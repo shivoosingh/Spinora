@@ -23,8 +23,7 @@ export async function loginToPanel(page: Page): Promise<void> {
   }
 
   if (!(await isLoginPage(page))) {
-    if (!(await isUserListReady(page))) await ensureUserList(page);
-    log("login", "already authenticated");
+    log("login", "already authenticated on /admin");
     return;
   }
 
@@ -180,22 +179,17 @@ async function clickSidebarUserList(page: Page): Promise<void> {
   }
 }
 
-/**
- * Cash Frenzy is a SPA on /admin only — never open /admin/userList or /admin/userManagement (both 404).
- */
 async function ensureUserList(page: Page): Promise<void> {
   await page.bringToFront().catch(() => {});
-  await page.waitForTimeout(400);
   await closeOverlays(page);
-  if (await hasNewAccountButton(page, 5000)) {
-    log("nav", "User List ready");
-    return;
-  }
 
-  // CDP-connected Chrome sometimes hides buttons from Playwright visibility — wait and retry.
-  await page.waitForTimeout(2000);
-  if (await hasNewAccountButton(page, 3000)) {
-    log("nav", "User List ready (after wait)");
+  const ready = await page.evaluate(() =>
+    [...document.querySelectorAll("button, .el-button")].some((el) =>
+      /new account/i.test(el.textContent ?? "")
+    )
+  );
+  if (ready) {
+    log("nav", "User List ready");
     return;
   }
 
@@ -205,24 +199,97 @@ async function ensureUserList(page: Page): Promise<void> {
     await page.waitForTimeout(2000);
   }
 
-  if (/cashfrenzy777\.com\/admin/i.test(page.url())) {
-    await clickSidebarUserList(page);
-  }
-
-  if (await hasNewAccountButton(page, 12000)) {
-    log("nav", "User List ready after sidebar click");
-    return;
-  }
-
-  // Operator keeps User List open on /admin — CDP visibility can lie; don't block the job.
   if (/cashfrenzy777\.com\/admin/i.test(page.url()) && !(await isLoginPage(page))) {
-    log("nav", "on /admin logged in — continuing");
+    log("nav", "on /admin — proceeding with create");
     return;
   }
 
   await screenshot(page, "user-list-nav-failed");
-  throw new Error(
-    "Could not see the New Account button on /admin. Open User List in the sidebar, then retry."
+  throw new Error("Not logged in on /admin. Open User List in bot Chrome, then retry.");
+}
+
+async function waitForCreateDialog(page: Page, timeoutMs = 12000): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const found = await page.evaluate(() => {
+      const dialogs = [...document.querySelectorAll(".el-dialog")];
+      return dialogs.some((d) => {
+        const hidden = d.closest(".el-overlay")?.getAttribute("style")?.includes("display: none");
+        if (hidden) return false;
+        return d.querySelector('input[type="password"]') !== null;
+      });
+    });
+    if (found) return true;
+    await page.waitForTimeout(350);
+  }
+  return false;
+}
+
+async function readDomMessages(page: Page): Promise<string> {
+  return page.evaluate(() =>
+    [...document.querySelectorAll(".el-message, .el-form-item__error, .el-message-box__message")]
+      .map((el) => el.textContent?.trim())
+      .filter(Boolean)
+      .join(" ")
+  );
+}
+
+async function createDialogStillOpen(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    for (const overlay of document.querySelectorAll(".el-overlay")) {
+      if (overlay.getAttribute("style")?.includes("display: none")) continue;
+      const dlg = overlay.querySelector(".el-dialog");
+      if (dlg?.querySelector('input[type="password"]')) return true;
+    }
+    return false;
+  });
+}
+
+async function fillAndSaveCreateDialog(page: Page, username: string, password: string): Promise<{ ok: boolean; error?: string }> {
+  return page.evaluate(
+    ({ user, pass }) => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      const setVal = (el: HTMLInputElement, val: string) => {
+        setter?.call(el, val);
+        el.dispatchEvent(new InputEvent("input", { bubbles: true, data: val, inputType: "insertText" }));
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      };
+
+      let dlg: Element | undefined;
+      for (const overlay of document.querySelectorAll(".el-overlay")) {
+        if (overlay.getAttribute("style")?.includes("display: none")) continue;
+        const candidate = overlay.querySelector(".el-dialog");
+        if (candidate?.querySelector('input[type="password"]')) {
+          dlg = candidate;
+          break;
+        }
+      }
+      if (!dlg) {
+        dlg = [...document.querySelectorAll(".el-dialog")].find((d) => d.querySelector('input[type="password"]'));
+      }
+      if (!dlg) return { ok: false, error: "create dialog not found" };
+
+      const textInputs = [
+        ...dlg.querySelectorAll('input.el-input__inner:not([type="password"]), input:not([type="password"]):not([type="hidden"])'),
+      ].filter((el) => (el as HTMLInputElement).type !== "checkbox") as HTMLInputElement[];
+      const passInputs = [...dlg.querySelectorAll('input[type="password"]')] as HTMLInputElement[];
+
+      if (textInputs.length < 1 || passInputs.length < 2) {
+        return { ok: false, error: `create form inputs missing (text=${textInputs.length}, pass=${passInputs.length})` };
+      }
+
+      setVal(textInputs[0], user);
+      setVal(passInputs[0], pass);
+      setVal(passInputs[1], pass);
+
+      const saveBtn = [...dlg.querySelectorAll("button, .el-button")].find((b) =>
+        /^\s*save\s*$/i.test(b.textContent ?? "")
+      );
+      if (!saveBtn) return { ok: false, error: "Save button not found" };
+      (saveBtn as HTMLElement).click();
+      return { ok: true };
+    },
+    { user: username, pass: password }
   );
 }
 
@@ -424,41 +491,27 @@ type CreateOutcome =
 async function tryCreateOnce(page: Page, username: string, password: string): Promise<CreateOutcome> {
   await ensureUserList(page);
   await clickNewAccount(page);
-  await page.waitForTimeout(1000);
+  log("create", `opening create dialog for ${username}`);
 
-  const dlg = visibleDialog(page);
-  await dlg.waitFor({ state: "attached", timeout: 10000 });
+  if (!(await waitForCreateDialog(page))) {
+    await screenshot(page, "create-dialog-missing");
+    return { status: "error", message: "Create dialog did not open after New Account click" };
+  }
 
-  const textInputs = dlg.locator('input.el-input__inner:not([type="password"])');
-  const passInputs = dlg.locator('input[type="password"]');
+  const filled = await fillAndSaveCreateDialog(page, username, password);
+  if (!filled.ok) {
+    await screenshot(page, "create-fill-failed");
+    return { status: "error", message: filled.error ?? "Could not fill create form" };
+  }
+  log("create", "submitted Save");
 
-  await typeInto(textInputs.nth(0), username);
-  await typeInto(passInputs.nth(0), password);
-  await typeInto(passInputs.nth(1), password);
+  await page.waitForTimeout(2500);
+  const messages = await readDomMessages(page);
 
-  await clickDialogButton(dlg, /^\s*save\s*$/i).catch(async () => {
-    const saved = await page.evaluate(() => {
-      const dlgEl = [...document.querySelectorAll(".el-dialog")].find((d) =>
-        /essential information/i.test(d.textContent ?? "")
-      );
-      const btn = dlgEl
-        ? [...dlgEl.querySelectorAll("button, .el-button")].find((b) => /^\s*save\s*$/i.test(b.textContent ?? ""))
-        : undefined;
-      if (!btn) return false;
-      (btn as HTMLElement).click();
-      return true;
-    });
-    if (!saved) throw new Error("Save button not found in create dialog");
-    log("create", "clicked Save via DOM");
-  });
-  await page.waitForTimeout(2000);
-
-  const messages = await readPanelMessages(page);
-
-  let stillOpen = await createDialogOpen(page);
+  let stillOpen = await createDialogStillOpen(page);
   if (stillOpen && !DUPLICATE_RE.test(messages)) {
-    await page.waitForTimeout(1200);
-    stillOpen = await createDialogOpen(page);
+    await page.waitForTimeout(1500);
+    stillOpen = await createDialogStillOpen(page);
   }
 
   if (!stillOpen) {
