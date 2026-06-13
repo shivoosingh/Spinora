@@ -1,7 +1,7 @@
 export const SITE_NAME = "Spinora";
 
-/** Set to true when the daily spin wheel is ready for players. */
-export const DAILY_SPIN_ENABLED = false;
+/** Daily spin wheel is live (win rates capped server-side in prize-engine). */
+export const DAILY_SPIN_ENABLED = true;
 
 /** VIP points awarded per successful referral */
 export const REFERRAL_REWARD_POINTS = 10;

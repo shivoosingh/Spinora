@@ -7,7 +7,7 @@ const footerLinks = {
   Platform: [
     { href: "/promotions", label: "Promotions" },
     { href: "/vip", label: "VIP Program" },
-    { href: "/spin", label: "Daily Spin (Soon)" },
+    { href: "/spin", label: "Daily Spin" },
     { href: "/about", label: "About Us" },
     { href: "/support", label: "Support" },
   ],

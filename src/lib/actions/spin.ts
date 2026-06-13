@@ -4,11 +4,14 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { createNotification } from "@/lib/actions/notifications";
 import {
-  WHEEL_PRIZES,
   DAILY_SPINS_BY_TIER,
   SPIN_COOLDOWN_MS,
-  pickWeightedPrize,
 } from "@/lib/spin/prizes";
+import {
+  resolveSpinPrize,
+  startOfUtcDayIso,
+  type GlobalSpinStats,
+} from "@/lib/spin/prize-engine";
 import { creditUserWallet } from "@/lib/actions/wallet";
 import { DAILY_SPIN_ENABLED } from "@/lib/constants";
 
@@ -54,6 +57,60 @@ async function getRecentSpins(userId: string) {
     .order("created_at", { ascending: true });
 
   return data ?? [];
+}
+
+async function getGlobalSpinStats(): Promise<GlobalSpinStats> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase.rpc("get_wheel_daily_stats").maybeSingle();
+
+  if (error || !data) {
+    const dayStart = startOfUtcDayIso();
+    const [spinsRes, tenRes, twentyRes, smallRes] = await Promise.all([
+      supabase
+        .from("wheel_spins")
+        .select("*", { count: "exact", head: true })
+        .gte("created_at", dayStart),
+      supabase
+        .from("wheel_spins")
+        .select("*", { count: "exact", head: true })
+        .gte("created_at", dayStart)
+        .eq("prize_value", 10),
+      supabase
+        .from("wheel_spins")
+        .select("*", { count: "exact", head: true })
+        .gte("created_at", dayStart)
+        .eq("prize_value", 20),
+      supabase
+        .from("wheel_spins")
+        .select("*", { count: "exact", head: true })
+        .gte("created_at", dayStart)
+        .eq("prize_type", "cash")
+        .gte("prize_value", 1)
+        .lte("prize_value", 4),
+    ]);
+
+    return {
+      spinsToday: spinsRes.count ?? 0,
+      tenDollarWinners: tenRes.count ?? 0,
+      twentyDollarWinners: twentyRes.count ?? 0,
+      smallCashWinners: smallRes.count ?? 0,
+    };
+  }
+
+  const row = data as {
+    spins_today: number;
+    ten_dollar_winners: number;
+    twenty_dollar_winners: number;
+    small_cash_winners: number;
+  };
+
+  return {
+    spinsToday: Number(row.spins_today ?? 0),
+    tenDollarWinners: Number(row.ten_dollar_winners ?? 0),
+    twentyDollarWinners: Number(row.twenty_dollar_winners ?? 0),
+    smallCashWinners: Number(row.small_cash_winners ?? 0),
+  };
 }
 
 export async function getSpinStatus(): Promise<SpinStatus | { error: string }> {
@@ -107,7 +164,8 @@ export async function spinWheel(): Promise<SpinResult> {
     };
   }
 
-  const { prize, index } = pickWeightedPrize();
+  const globalStats = await getGlobalSpinStats();
+  const { prize, index } = resolveSpinPrize(globalStats);
 
   const { error } = await supabase.from("wheel_spins").insert({
     user_id: user.id,
