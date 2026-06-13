@@ -243,12 +243,20 @@ export function getOtherGames(slug: string, limit = 6): Game[] {
 }
 
 export function filterGames(tab: GameTab, search: string): Game[] {
-  let list = [...GAMES].sort((a, b) => b.players - a.players);
+  let list = [...GAMES];
 
-  if (tab === "upcoming") {
-    list = list.filter((g) => g.upcoming);
+  if (tab === "all") {
+    // Every game — live first, then coming soon (cards show SOON badge via game.upcoming).
+    list.sort((a, b) => {
+      if (Boolean(a.upcoming) !== Boolean(b.upcoming)) {
+        return a.upcoming ? 1 : -1;
+      }
+      return b.players - a.players;
+    });
+  } else if (tab === "upcoming") {
+    list = list.filter((g) => g.upcoming).sort((a, b) => b.players - a.players);
   } else {
-    list = list.filter((g) => !g.upcoming);
+    list = list.filter((g) => !g.upcoming).sort((a, b) => b.players - a.players);
     if (tab === "popular") list = list.filter((g) => g.popular);
     if (tab === "topRated") list = list.filter((g) => g.topRated);
     // trending & promotional tabs list every live game
