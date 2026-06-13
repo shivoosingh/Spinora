@@ -20,7 +20,7 @@ export interface DepositPaymentMethod {
 }
 
 /** Bump when replacing files in /public/payments/ so browsers fetch fresh QR images. */
-const DEPOSIT_QR_VERSION = "20260614";
+const DEPOSIT_QR_VERSION = "20260614b";
 
 function depositQr(path: string) {
   return `${path}?v=${DEPOSIT_QR_VERSION}`;

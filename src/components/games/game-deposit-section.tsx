@@ -161,18 +161,19 @@ export function GameDepositSection({ game }: GameDepositSectionProps) {
 
       <div
         className={cn(
-          "rounded-xl border p-4 mb-4 grid sm:grid-cols-2 gap-4",
+          "rounded-xl border p-4 sm:p-6 mb-4 flex flex-col items-center text-center",
           method.accent
         )}
       >
-        <div className="flex flex-col items-center justify-center">
-          <div className="relative w-40 h-40 rounded-xl overflow-hidden border border-white/10 bg-white">
+        <div className="flex flex-col items-center w-full max-w-sm mx-auto">
+          <div className="relative w-full aspect-square max-w-[280px] sm:max-w-[320px] rounded-2xl overflow-hidden border border-white/10 bg-white shadow-lg">
             {!qrError ? (
               <Image
                 src={method.qrImage}
                 alt={`${method.label} QR code`}
                 fill
-                className="object-contain p-2"
+                className="object-contain p-1 sm:p-1.5"
+                sizes="(max-width: 640px) 280px, 320px"
                 unoptimized
                 onError={() => setQrError(true)}
               />
@@ -189,17 +190,17 @@ export function GameDepositSection({ game }: GameDepositSectionProps) {
           <button
             type="button"
             onClick={handleDownloadQr}
-            className="mt-2 flex items-center gap-1.5 text-[11px] text-orange-400 hover:underline"
+            className="mt-3 flex items-center gap-1.5 text-xs text-orange-400 hover:underline"
           >
-            <Download className="h-3 w-3" />
+            <Download className="h-3.5 w-3.5" />
             Download QR
           </button>
         </div>
 
-        <div className="flex flex-col justify-center min-w-0">
+        <div className="flex flex-col items-center w-full max-w-sm mx-auto mt-5 pt-5 border-t border-white/10">
           <p className="text-xs text-muted-foreground mb-1">{method.copyLabel}</p>
-          <p className="font-mono text-sm text-white break-all mb-3">{method.username}</p>
-          <div className="flex flex-col gap-2 w-full sm:w-auto">
+          <p className="font-mono text-base sm:text-lg text-white break-all mb-4">{method.username}</p>
+          <div className="flex flex-col gap-2 w-full">
             <button
               type="button"
               onClick={handleCopyUsername}
