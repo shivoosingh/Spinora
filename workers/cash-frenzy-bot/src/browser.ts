@@ -38,12 +38,20 @@ async function isUsablePanelPage(page: Page): Promise<boolean> {
   return /backend/i.test(body) || /new account/i.test(body);
 }
 
+async function pageHasNewAccountButton(page: Page): Promise<boolean> {
+  for (const frame of page.frames()) {
+    const loc = frame.locator(".el-button, button").filter({ hasText: /new\s*account/i });
+    if ((await loc.count()) > 0) return true;
+  }
+  return false;
+}
+
 async function findPanelPage(pages: Page[]): Promise<Page> {
   for (const page of pages) {
     if (!(await isUsablePanelPage(page))) continue;
     await page.bringToFront().catch(() => {});
-    if (await page.locator(".el-button, button").filter({ hasText: /new account/i }).first().isVisible().catch(() => false)) {
-      console.log("[cf] Using tab:", page.url());
+    if (await pageHasNewAccountButton(page)) {
+      console.log("[cf] Using tab (User List):", page.url());
       return page;
     }
   }
@@ -97,9 +105,8 @@ export async function openBrowserSession(): Promise<BrowserSession> {
     console.log("[cf] Connecting to your Chrome via CDP (VPN should already be on)…");
     try {
       const browser = await chromium.connectOverCDP(cdpUrl, { slowMo: 100 });
-      const context = browser.contexts()[0] ?? (await browser.newContext());
-      const pages = context.pages();
-      const page = pages.length > 0 ? await findPanelPage(pages) : await context.newPage();
+      const allPages = browser.contexts().flatMap((ctx) => ctx.pages());
+      const page = allPages.length > 0 ? await findPanelPage(allPages) : await browser.contexts()[0]!.newPage();
       return {
         page,
         close: async () => {

@@ -1,4 +1,4 @@
-import type { Locator, Page } from "playwright";
+import type { Frame, Locator, Page } from "playwright";
 import { isLoginPage, log, screenshot, waitForManualLogin } from "./panel-utils.js";
 
 const ADMIN_URL =
@@ -11,7 +11,7 @@ const ADMIN_HOME = `${BASE_URL}`;
 export async function loginToPanel(page: Page): Promise<void> {
   await page.bringToFront().catch(() => {});
 
-  if (!(await isLoginPage(page)) && (await hasNewAccountButton(page, 3000))) {
+  if (!(await isLoginPage(page)) && (await hasNewAccountButton(page))) {
     log("login", "already on User List");
     return;
   }
@@ -105,54 +105,91 @@ async function clickDialogButton(dlg: Locator, pattern: RegExp): Promise<void> {
 
 /* ----------------------------------------------------------- user listing */
 
-function newAccountButton(page: Page): Locator {
-  return page.locator("button.el-button, .el-button, button").filter({ hasText: /new account/i }).first();
+const NEW_ACCOUNT_RE = /new\s*account/i;
+
+function newAccountLocators(root: Page | Frame): Locator[] {
+  return [
+    root.getByRole("button", { name: NEW_ACCOUNT_RE }),
+    root.locator(".el-button").filter({ hasText: NEW_ACCOUNT_RE }),
+    root.locator("button").filter({ hasText: NEW_ACCOUNT_RE }),
+    root.getByText(NEW_ACCOUNT_RE),
+  ];
 }
 
-async function hasNewAccountButton(page: Page, timeoutMs = 3000): Promise<boolean> {
-  await page.bringToFront().catch(() => {});
-  if (
-    await page
-      .locator(".el-button, button")
-      .filter({ hasText: /new account/i })
-      .first()
-      .isVisible()
-      .catch(() => false)
-  ) {
+/** Click via bounding box — works when CDP reports elements as not "visible". */
+async function clickLocatorByBox(page: Page, loc: Locator): Promise<boolean> {
+  if ((await loc.count()) === 0) return false;
+  const box = await loc.first().boundingBox().catch(() => null);
+  if (box && box.width > 0 && box.height > 0) {
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     return true;
   }
-  try {
-    return await page.evaluate(() => {
-      return [...document.querySelectorAll("button, .el-button, a")].some((el) =>
-        /new account/i.test(el.textContent ?? "")
-      );
-    });
-  } catch {
-    return false;
+  await loc.first().click({ force: true, timeout: 5000 }).catch(() => {});
+  return true;
+}
+
+async function clickNewAccountInFrame(page: Page, frame: Page | Frame): Promise<boolean> {
+  for (const loc of newAccountLocators(frame)) {
+    if (await clickLocatorByBox(page, loc.first())) return true;
   }
+  return false;
+}
+
+async function clickNewAccountViaDom(page: Page, frame: Page | Frame): Promise<boolean> {
+  return frame
+    .evaluate(() => {
+      const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+      const candidates = [...document.querySelectorAll("button, .el-button, a, span, div")];
+      for (const el of candidates) {
+        if (!/^new account$/i.test(norm(el.textContent ?? ""))) continue;
+        const clickEl = (el.closest("button, .el-button, a") ?? el) as HTMLElement;
+        clickEl.click();
+        return true;
+      }
+      return false;
+    })
+    .catch(() => false);
+}
+
+async function hasNewAccountButton(page: Page): Promise<boolean> {
+  await page.bringToFront().catch(() => {});
+  for (const frame of page.frames()) {
+    for (const loc of newAccountLocators(frame)) {
+      if ((await loc.count()) > 0) return true;
+    }
+    const inDom = await frame
+      .evaluate(() =>
+        [...document.querySelectorAll("button, .el-button, a, span")].some((el) =>
+          /new\s*account/i.test((el.textContent ?? "").replace(/\s+/g, " "))
+        )
+      )
+      .catch(() => false);
+    if (inDom) return true;
+  }
+  return false;
 }
 
 async function clickNewAccount(page: Page): Promise<void> {
   await page.bringToFront().catch(() => {});
-  const btn = newAccountButton(page);
-  if (await btn.isVisible().catch(() => false)) {
-    await btn.scrollIntoViewIfNeeded().catch(() => {});
-    await btn.click({ force: true });
-    return;
+  await page.waitForTimeout(600);
+
+  for (const frame of page.frames()) {
+    if (await clickNewAccountInFrame(page, frame)) {
+      log("create", `clicked New Account (${frame.url() || "main"})`);
+      return;
+    }
+    if (await clickNewAccountViaDom(page, frame)) {
+      log("create", `clicked New Account via DOM (${frame.url() || "main"})`);
+      return;
+    }
   }
-  const clicked = await page.evaluate(() => {
-    const els = [...document.querySelectorAll("button, .el-button, a")];
-    const target = els.find((el) => /new account/i.test(el.textContent ?? ""));
-    if (!target) return false;
-    (target as HTMLElement).click();
-    return true;
-  });
-  if (!clicked) throw new Error("New Account button not found on page");
-  log("create", "clicked New Account via DOM");
+
+  await screenshot(page, "new-account-not-found");
+  throw new Error("New Account button not found — stay on User List in bot Chrome on /admin");
 }
 
 async function isUserListReady(page: Page): Promise<boolean> {
-  return hasNewAccountButton(page, 1500);
+  return hasNewAccountButton(page);
 }
 
 async function pageLooksLike404(page: Page): Promise<boolean> {
@@ -183,24 +220,14 @@ async function ensureUserList(page: Page): Promise<void> {
   await page.bringToFront().catch(() => {});
   await closeOverlays(page);
 
-  const ready = await page.evaluate(() =>
-    [...document.querySelectorAll("button, .el-button")].some((el) =>
-      /new account/i.test(el.textContent ?? "")
-    )
-  );
+  const ready = await hasNewAccountButton(page);
   if (ready) {
     log("nav", "User List ready");
     return;
   }
 
-  if (await pageLooksLike404(page)) {
-    log("nav", "404 tab — returning to /admin");
-    await page.goto(ADMIN_HOME, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
-    await page.waitForTimeout(2000);
-  }
-
   if (/cashfrenzy777\.com\/admin/i.test(page.url()) && !(await isLoginPage(page))) {
-    log("nav", "on /admin — proceeding with create");
+    log("nav", "on /admin — will click New Account by coordinates");
     return;
   }
 
@@ -211,15 +238,19 @@ async function ensureUserList(page: Page): Promise<void> {
 async function waitForCreateDialog(page: Page, timeoutMs = 12000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const found = await page.evaluate(() => {
-      const dialogs = [...document.querySelectorAll(".el-dialog")];
-      return dialogs.some((d) => {
-        const hidden = d.closest(".el-overlay")?.getAttribute("style")?.includes("display: none");
-        if (hidden) return false;
-        return d.querySelector('input[type="password"]') !== null;
-      });
-    });
-    if (found) return true;
+    for (const frame of page.frames()) {
+      const found = await frame
+        .evaluate(() => {
+          const dialogs = [...document.querySelectorAll(".el-dialog")];
+          return dialogs.some((d) => {
+            const hidden = d.closest(".el-overlay")?.getAttribute("style")?.includes("display: none");
+            if (hidden) return false;
+            return d.querySelector('input[type="password"]') !== null;
+          });
+        })
+        .catch(() => false);
+      if (found) return true;
+    }
     await page.waitForTimeout(350);
   }
   return false;
@@ -246,51 +277,60 @@ async function createDialogStillOpen(page: Page): Promise<boolean> {
 }
 
 async function fillAndSaveCreateDialog(page: Page, username: string, password: string): Promise<{ ok: boolean; error?: string }> {
-  return page.evaluate(
-    ({ user, pass }) => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-      const setVal = (el: HTMLInputElement, val: string) => {
-        setter?.call(el, val);
-        el.dispatchEvent(new InputEvent("input", { bubbles: true, data: val, inputType: "insertText" }));
-        el.dispatchEvent(new Event("change", { bubbles: true }));
-      };
+  for (const frame of page.frames()) {
+    const result = await frame
+      .evaluate(
+        ({ user, pass }) => {
+          const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+          const setVal = (el: HTMLInputElement, val: string) => {
+            setter?.call(el, val);
+            el.dispatchEvent(new InputEvent("input", { bubbles: true, data: val, inputType: "insertText" }));
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+          };
 
-      let dlg: Element | undefined;
-      for (const overlay of document.querySelectorAll(".el-overlay")) {
-        if (overlay.getAttribute("style")?.includes("display: none")) continue;
-        const candidate = overlay.querySelector(".el-dialog");
-        if (candidate?.querySelector('input[type="password"]')) {
-          dlg = candidate;
-          break;
-        }
-      }
-      if (!dlg) {
-        dlg = [...document.querySelectorAll(".el-dialog")].find((d) => d.querySelector('input[type="password"]'));
-      }
-      if (!dlg) return { ok: false, error: "create dialog not found" };
+          let dlg: Element | undefined;
+          for (const overlay of document.querySelectorAll(".el-overlay")) {
+            if (overlay.getAttribute("style")?.includes("display: none")) continue;
+            const candidate = overlay.querySelector(".el-dialog");
+            if (candidate?.querySelector('input[type="password"]')) {
+              dlg = candidate;
+              break;
+            }
+          }
+          if (!dlg) {
+            dlg = [...document.querySelectorAll(".el-dialog")].find((d) => d.querySelector('input[type="password"]'));
+          }
+          if (!dlg) return { ok: false, error: "create dialog not found" };
 
-      const textInputs = [
-        ...dlg.querySelectorAll('input.el-input__inner:not([type="password"]), input:not([type="password"]):not([type="hidden"])'),
-      ].filter((el) => (el as HTMLInputElement).type !== "checkbox") as HTMLInputElement[];
-      const passInputs = [...dlg.querySelectorAll('input[type="password"]')] as HTMLInputElement[];
+          const textInputs = [
+            ...dlg.querySelectorAll(
+              'input.el-input__inner:not([type="password"]), input:not([type="password"]):not([type="hidden"])'
+            ),
+          ].filter((el) => (el as HTMLInputElement).type !== "checkbox") as HTMLInputElement[];
+          const passInputs = [...dlg.querySelectorAll('input[type="password"]')] as HTMLInputElement[];
 
-      if (textInputs.length < 1 || passInputs.length < 2) {
-        return { ok: false, error: `create form inputs missing (text=${textInputs.length}, pass=${passInputs.length})` };
-      }
+          if (textInputs.length < 1 || passInputs.length < 2) {
+            return { ok: false, error: `create form inputs missing (text=${textInputs.length}, pass=${passInputs.length})` };
+          }
 
-      setVal(textInputs[0], user);
-      setVal(passInputs[0], pass);
-      setVal(passInputs[1], pass);
+          setVal(textInputs[0], user);
+          setVal(passInputs[0], pass);
+          setVal(passInputs[1], pass);
 
-      const saveBtn = [...dlg.querySelectorAll("button, .el-button")].find((b) =>
-        /^\s*save\s*$/i.test(b.textContent ?? "")
-      );
-      if (!saveBtn) return { ok: false, error: "Save button not found" };
-      (saveBtn as HTMLElement).click();
-      return { ok: true };
-    },
-    { user: username, pass: password }
-  );
+          const saveBtn = [...dlg.querySelectorAll("button, .el-button")].find((b) =>
+            /^\s*save\s*$/i.test(b.textContent ?? "")
+          );
+          if (!saveBtn) return { ok: false, error: "Save button not found" };
+          (saveBtn as HTMLElement).click();
+          return { ok: true };
+        },
+        { user: username, pass: password }
+      )
+      .catch(() => null);
+    if (result?.ok) return result;
+    if (result && !result.ok && result.error !== "create dialog not found") return result;
+  }
+  return { ok: false, error: "create dialog not found" };
 }
 
 function searchInput(page: Page): Locator {
