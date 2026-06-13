@@ -1,6 +1,33 @@
-import { TASK_LEVELS } from "@/lib/tasks/definitions";
+import { TASK_LEVELS, getTasksForLevel } from "@/lib/tasks/definitions";
 import { TASK_UNLOCK_HOURS } from "@/lib/tasks/utils";
-import type { LevelStatus, UserLevelProgress } from "@/lib/tasks/types";
+import type { LevelStatus, TaskSubmission, UserLevelProgress } from "@/lib/tasks/types";
+
+/** Mark levels completed in-memory when all tasks are approved but DB wasn't updated yet. */
+export function inferLevelCompletionFromSubmissions(
+  progress: UserLevelProgress[],
+  submissions: TaskSubmission[]
+): UserLevelProgress[] {
+  return progress.map((row) => {
+    if (row.status === "completed" || row.reward_granted) return row;
+
+    const levelMeta = TASK_LEVELS.find((l) => l.level === row.level);
+    if (!levelMeta) return row;
+
+    const levelTasks = getTasksForLevel(row.level);
+    const approved = submissions.filter(
+      (s) => s.level === row.level && s.status === "approved"
+    );
+    const approvedIds = new Set(approved.map((s) => s.task_id));
+    const allDone = levelTasks.every((t) => approvedIds.has(t.id));
+    const points = approved.reduce((sum, s) => sum + s.points_awarded, 0);
+
+    if (allDone && points >= levelMeta.pointsRequired) {
+      return { ...row, status: "completed" as LevelStatus };
+    }
+
+    return row;
+  });
+}
 
 export function computeTaskCashBalances(progress: UserLevelProgress[]) {
   let totalCashEarned = 0;

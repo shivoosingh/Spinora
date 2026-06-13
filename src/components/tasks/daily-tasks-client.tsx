@@ -29,6 +29,9 @@ export function DailyTasksClient({ board, onReload }: DailyTasksClientProps) {
   const [tab, setTab] = useState<Tab>("active");
   const [selectedLevel, setSelectedLevel] = useState(board.activeLevel);
   const [claiming, setClaiming] = useState(false);
+  const [claimFeedback, setClaimFeedback] = useState<{ type: "error" | "success"; message: string } | null>(
+    null
+  );
   // Re-render once a minute so unlock countdowns stay fresh.
   const [, setNow] = useState(Date.now());
   useEffect(() => {
@@ -63,19 +66,26 @@ export function DailyTasksClient({ board, onReload }: DailyTasksClientProps) {
 
   async function handleClaim(level: number) {
     setClaiming(true);
+    setClaimFeedback(null);
     try {
       const result = await claimLevelReward(level);
       if (result.error) {
-        toast.error(result.error);
+        const message = result.error;
+        setClaimFeedback({ type: "error", message });
+        toast.error(message);
         return;
       }
-      toast.success(`$${result.amount} added to your Bonus wallet!`);
+      const message = `$${result.amount} added to your Bonus wallet!`;
+      setClaimFeedback({ type: "success", message });
+      toast.success(message);
       if (typeof window !== "undefined") {
         window.dispatchEvent(new Event(WALLET_REFRESH_EVENT));
       }
       await onReload?.();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not claim reward");
+      const message = err instanceof Error ? err.message : "Could not claim reward";
+      setClaimFeedback({ type: "error", message });
+      toast.error(message);
     } finally {
       setClaiming(false);
     }
@@ -87,7 +97,7 @@ export function DailyTasksClient({ board, onReload }: DailyTasksClientProps) {
         <div className="absolute right-4 top-4 opacity-20">
           <Target className="h-24 w-24 text-orange-500" />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-lg mx-auto mb-2">
+        <div className="max-w-xs mx-auto mb-2">
           <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
             <p
               className={cn(
@@ -101,13 +111,6 @@ export function DailyTasksClient({ board, onReload }: DailyTasksClientProps) {
             {board.availableCashBalance > 0 && (
               <p className="text-[11px] text-emerald-300/80 mt-1">Press Claim Reward below</p>
             )}
-          </div>
-          <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
-            <p className="text-3xl sm:text-4xl font-bold text-white mb-1">
-              ${board.totalCashEarned.toLocaleString()}
-            </p>
-            <p className="text-sm text-muted-foreground">Total Cash Earned</p>
-            <p className="text-[11px] text-muted-foreground/80 mt-1">Paid to Bonus wallet after claim</p>
           </div>
         </div>
         <p className="text-xs text-amber-400">{board.totalPointsEarned} total points earned</p>
@@ -134,6 +137,16 @@ export function DailyTasksClient({ board, onReload }: DailyTasksClientProps) {
             <p className="text-[11px] text-emerald-300/70 mt-2">
               Goes to your Bonus wallet. Next level unlocks 24h after you claim.
             </p>
+            {claimFeedback && (
+              <p
+                className={cn(
+                  "text-sm font-medium mt-3",
+                  claimFeedback.type === "error" ? "text-red-400" : "text-emerald-300"
+                )}
+              >
+                {claimFeedback.message}
+              </p>
+            )}
           </div>
         )}
       </div>

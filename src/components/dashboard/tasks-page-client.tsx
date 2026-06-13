@@ -9,7 +9,7 @@ import { useDashboardSession } from "@/lib/dashboard/use-dashboard-session";
 import { TASK_LEVELS } from "@/lib/tasks/definitions";
 import type { TaskBoardData } from "@/lib/actions/daily-tasks";
 import type { TaskSubmission, UserLevelProgress } from "@/lib/tasks/types";
-import { normalizeLevelProgress, resolveActiveLevel, computeTaskCashBalances } from "@/lib/tasks/level-progress";
+import { normalizeLevelProgress, resolveActiveLevel, computeTaskCashBalances, inferLevelCompletionFromSubmissions } from "@/lib/tasks/level-progress";
 
 export function TasksPageClient() {
   const { supabase, userId, ready } = useDashboardSession();
@@ -47,8 +47,9 @@ export function TasksPageClient() {
     }
 
     const rawProgress = (levelProgress ?? []) as UserLevelProgress[];
-    const progress = normalizeLevelProgress(rawProgress);
     const subs = (submissions ?? []) as TaskSubmission[];
+    const inferred = inferLevelCompletionFromSubmissions(rawProgress, subs);
+    const progress = normalizeLevelProgress(inferred);
 
     const activeLevel = resolveActiveLevel(progress);
 

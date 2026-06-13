@@ -61,8 +61,7 @@ export function DailyTaskPopup({ board, onClose }: DailyTaskPopupProps) {
             Complete tasks, earn points & unlock real cash rewards
           </p>
           <p className="text-sm text-amber-400 font-semibold mt-2">
-            Level {board.activeLevel} active · ${board.availableCashBalance} to claim · $
-            {board.totalCashEarned} earned
+            Level {board.activeLevel} active · ${board.availableCashBalance} available to claim
           </p>
         </div>
 

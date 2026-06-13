@@ -11,7 +11,7 @@ import {
   type TaskLevelMeta,
 } from "@/lib/tasks/definitions";
 import type { TaskSubmission, UserLevelProgress } from "@/lib/tasks/types";
-import { normalizeLevelProgress, resolveActiveLevel, computeTaskCashBalances } from "@/lib/tasks/level-progress";
+import { normalizeLevelProgress, resolveActiveLevel, computeTaskCashBalances, inferLevelCompletionFromSubmissions } from "@/lib/tasks/level-progress";
 import { notifyAdminOfTaskSubmission } from "@/lib/telegram/notify-admin-task-submission";
 import { notifyAdminOfTaskRewardClaim } from "@/lib/telegram/notify-admin-task-claim";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -75,8 +75,9 @@ export async function getTaskBoard(userId?: string): Promise<TaskBoardData | { e
   }
 
   const rawProgress = (levelProgress ?? []) as UserLevelProgress[];
-  const progress = normalizeLevelProgress(rawProgress);
   const subs = (submissions ?? []) as TaskSubmission[];
+  const inferred = inferLevelCompletionFromSubmissions(rawProgress, subs);
+  const progress = normalizeLevelProgress(inferred);
 
   const activeLevel = resolveActiveLevel(progress);
 
@@ -170,6 +171,100 @@ export async function submitTaskForReview(taskId: string, proofNote: string, pro
 
   revalidatePath("/dashboard/tasks");
   revalidatePath("/admin/tasks");
+  return { success: true };
+}
+
+async function syncLevelCompletionIfReady(userId: string, level: number): Promise<boolean> {
+  const supabase = await createClient();
+  const levelMeta = TASK_LEVELS.find((l) => l.level === level);
+  if (!levelMeta) return false;
+
+  const levelTasks = getTasksForLevel(level);
+  const { data: subs } = await supabase
+    .from("user_task_submissions")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("level", level)
+    .eq("status", "approved");
+
+  const approved = (subs ?? []) as TaskSubmission[];
+  const approvedIds = new Set(approved.map((s) => s.task_id));
+  const allDone = levelTasks.every((t) => approvedIds.has(t.id));
+  const points = approved.reduce((sum, s) => sum + s.points_awarded, 0);
+
+  if (!allDone || points < levelMeta.pointsRequired) return false;
+
+  const { data: levelRow } = await supabase
+    .from("user_task_levels")
+    .select("reward_granted, status")
+    .eq("user_id", userId)
+    .eq("level", level)
+    .single();
+
+  if (levelRow?.reward_granted || levelRow?.status === "completed") return true;
+
+  await supabase.rpc("upsert_user_task_level", {
+    p_user_id: userId,
+    p_level: level,
+    p_points: points,
+    p_status: "completed",
+    p_reward_granted: false,
+  });
+
+  const admin = createAdminClient();
+  if (admin && level < 10) {
+    await admin
+      .from("user_task_levels")
+      .update({ status: "locked" })
+      .eq("user_id", userId)
+      .eq("level", level + 1)
+      .neq("status", "completed");
+  }
+
+  return true;
+}
+
+async function creditBonusWalletViaAdmin(
+  admin: NonNullable<ReturnType<typeof createAdminClient>>,
+  userId: string,
+  amount: number,
+  level: number
+): Promise<{ success?: boolean; error?: string }> {
+  const { data: profile, error: profileError } = await admin
+    .from("profiles")
+    .select("bonus_wallet")
+    .eq("id", userId)
+    .single();
+
+  if (profileError) {
+    if (profileError.message.includes("bonus_wallet")) {
+      return { error: "Wallet not set up. Run supabase/wallets.sql in Supabase." };
+    }
+    return { error: profileError.message };
+  }
+
+  const nextBalance = Number(profile?.bonus_wallet ?? 0) + amount;
+  const { error: updateError } = await admin
+    .from("profiles")
+    .update({ bonus_wallet: nextBalance })
+    .eq("id", userId);
+
+  if (updateError) return { error: updateError.message };
+
+  const { error: txError } = await admin.from("wallet_transactions").insert({
+    user_id: userId,
+    amount,
+    wallet_type: "bonus",
+    transaction_type: "credit",
+    source: "daily_task",
+    description: `Level ${level} task reward claimed`,
+    created_by: userId,
+  });
+
+  if (txError && !txError.message.includes("wallet_transactions")) {
+    return { error: txError.message };
+  }
+
   return { success: true };
 }
 
@@ -285,21 +380,25 @@ async function claimLevelRewardFallback(
     return { error: "Reward already claimed or level not complete" };
   }
 
-  const wallet = await creditUserWallet(
-    userId,
-    amount,
-    "bonus",
-    "daily_task",
-    `Level ${level} task reward claimed`
-  );
+  const wallet = await creditBonusWalletViaAdmin(admin, userId, amount, level);
 
   if (wallet.error) {
-    await admin
-      .from("user_task_levels")
-      .update({ reward_granted: false, reward_claimed_at: null })
-      .eq("user_id", userId)
-      .eq("level", level);
-    return { error: wallet.error };
+    // Fall back to user-scoped RPC if direct admin update failed.
+    const rpcWallet = await creditUserWallet(
+      userId,
+      amount,
+      "bonus",
+      "daily_task",
+      `Level ${level} task reward claimed`
+    );
+    if (rpcWallet.error) {
+      await admin
+        .from("user_task_levels")
+        .update({ reward_granted: false, reward_claimed_at: null })
+        .eq("user_id", userId)
+        .eq("level", level);
+      return { error: rpcWallet.error };
+    }
   }
 
   if (level < 10) {
@@ -328,6 +427,8 @@ export async function claimLevelReward(level: number) {
 
   const levelMeta = TASK_LEVELS.find((l) => l.level === level);
   if (!levelMeta) return { error: "Invalid level" };
+
+  await syncLevelCompletionIfReady(user.id, level);
 
   const { data: levelRow } = await supabase
     .from("user_task_levels")

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ComponentType, type ReactNode } from "react";
+import { Toaster } from "sonner";
 import { createClient } from "@/lib/supabase/client";
 import { MessageRealtimeStubProvider } from "@/lib/chat/message-realtime-stub";
 
@@ -34,5 +35,10 @@ export function ClientProviders({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  return <Provider>{children}</Provider>;
+  return (
+    <Provider>
+      {children}
+      <Toaster richColors closeButton position="top-center" />
+    </Provider>
+  );
 }
