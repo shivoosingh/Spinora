@@ -64,8 +64,8 @@ export const TASK_DEFINITIONS: TaskDefinition[] = [
   { id: "L3-01", level: 3, title: "Join Spinora Facebook group", description: "Join the Spinora community on Facebook and introduce yourself.", category: "social", points: 20, actionLabel: "Join Group", actionHref: facebook, external: true },
   { id: "L3-02", level: 3, title: "Post in community chat", description: "Share a greeting or win in the Spinora Telegram group.", category: "engagement", points: 25, actionLabel: "Open Telegram", actionHref: telegram, external: true },
   { id: "L3-03", level: 3, title: "Share promo to your story", description: "Share today's Spinora promo to your Instagram or Facebook story.", category: "content", points: 25, actionLabel: "Share Story", actionHref: instagram, external: true },
-  { id: "L3-04", level: 3, title: "Request a game account", description: "Submit a game account request from your dashboard.", category: "game", points: 25, actionLabel: "Request Game", actionHref: "/dashboard/requests" },
-  { id: "L3-05", level: 3, title: "Spin the daily wheel", description: "Complete your free daily spin.", category: "game", points: 25, actionLabel: "Spin Now", actionHref: "/spin" },
+  { id: "L3-04", level: 3, title: "Create a game account", description: "Open any game page and create your automated game account.", category: "game", points: 25, actionLabel: "Browse Games", actionHref: "/#games" },
+  { id: "L3-05", level: 3, title: "Load your game wallet", description: "Add funds to a game wallet from any game page.", category: "game", points: 25, actionLabel: "Browse Games", actionHref: "/#games" },
 
   // Level 4 — Content Creator (180 pts)
   { id: "L4-01", level: 4, title: "Post a win screenshot", description: "Share your win screenshot in the Spinora Telegram group.", category: "content", points: 35, actionLabel: "Share Win", actionHref: telegram, external: true },

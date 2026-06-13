@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { Gamepad2, Crown, Users, Bell, Star } from "lucide-react";
+import { Target, Crown, Users, Bell, Star } from "lucide-react";
 import { DashboardPageHeader } from "@/components/dashboard/dashboard-page-header";
 import { DashboardRouteLoading } from "@/components/dashboard/dashboard-route-loading";
 import { ReviewsPreviewClient } from "@/components/dashboard/reviews-preview-client";
@@ -14,7 +14,7 @@ import { useDashboardSession } from "@/lib/dashboard/use-dashboard-session";
 import { VIP_TIERS } from "@/lib/constants";
 
 interface OverviewStats {
-  requestCount: number;
+  tasksCompleted: number;
   referralCount: number;
   notifCount: number;
   reviewCount: number;
@@ -34,9 +34,10 @@ export function OverviewPageClient() {
 
     void Promise.all([
       supabase
-        .from("game_requests")
+        .from("user_task_levels")
         .select("*", { count: "exact", head: true })
-        .eq("user_id", userId),
+        .eq("user_id", userId)
+        .eq("reward_granted", true),
       supabase
         .from("referrals")
         .select("*", { count: "exact", head: true })
@@ -56,7 +57,7 @@ export function OverviewPageClient() {
       if (cancelled) return;
       const profile = profileRes.data;
       setStats({
-        requestCount: reqRes.count ?? 0,
+        tasksCompleted: reqRes.count ?? 0,
         referralCount: refRes.count ?? 0,
         notifCount: notifRes.count ?? 0,
         reviewCount: reviewRes.count ?? 0,
@@ -80,7 +81,7 @@ export function OverviewPageClient() {
   const progress = nextTier ? (stats.vipPoints / nextTier.minPoints) * 100 : 100;
 
   const statCards = [
-    { icon: Gamepad2, label: "Game Requests", value: stats.requestCount, href: "/dashboard/requests" },
+    { icon: Target, label: "Task Rewards Claimed", value: stats.tasksCompleted, href: "/dashboard/tasks" },
     { icon: Crown, label: "VIP Tier", value: currentTier?.name || "Bronze", href: "/dashboard/vip" },
     { icon: Users, label: "Referrals", value: stats.referralCount, href: "/dashboard/referrals" },
     { icon: Star, label: "Reviews", value: stats.reviewCount, href: "/dashboard/reviews" },
@@ -147,8 +148,8 @@ export function OverviewPageClient() {
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
             <Button asChild>
-              <Link href="/dashboard/requests" prefetch>
-                Request Game Account
+              <Link href="/dashboard/tasks" prefetch>
+                Open Daily Tasks
               </Link>
             </Button>
             <Button variant="outline" asChild>

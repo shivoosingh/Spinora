@@ -9,7 +9,7 @@ import { AnimatedLogo } from "@/components/ui/animated-logo";
 
 const navLinks = [
   { href: "/#games", label: "Games" },
-  { href: "/spin", label: "Spin Wheel" },
+  { href: "/spin", label: "Daily Spin", comingSoon: true },
   { href: "/promotions", label: "Promotions" },
   { href: "/vip", label: "VIP" },
   { href: "/about", label: "About" },
@@ -29,9 +29,14 @@ export function Navbar() {
             <Link
               key={link.href}
               href={link.href}
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors inline-flex items-center gap-1.5"
             >
               {link.label}
+              {"comingSoon" in link && link.comingSoon && (
+                <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                  Soon
+                </span>
+              )}
             </Link>
           ))}
         </div>

@@ -1,5 +1,6 @@
-import { RequestsPageClient } from "@/components/dashboard/requests-page-client";
+import { redirect } from "next/navigation";
 
+/** Game Requests removed — accounts are created automatically via game bots. */
 export default function RequestsPage() {
-  return <RequestsPageClient />;
+  redirect("/dashboard");
 }

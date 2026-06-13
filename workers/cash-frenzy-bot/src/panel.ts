@@ -88,19 +88,331 @@ async function typeIntoViaDom(input: Locator, value: string): Promise<void> {
 }
 
 async function typeInto(input: Locator, value: string): Promise<void> {
-  if (await input.isVisible().catch(() => false)) {
-    await input.click();
+  await input.waitFor({ state: "attached", timeout: 8000 }).catch(() => {});
+  try {
+    await input.click({ force: true, timeout: 3000 });
     await input.fill("");
     await input.pressSequentially(value, { delay: 25 });
     return;
+  } catch {
+    await typeIntoViaDom(input, value);
   }
-  await typeIntoViaDom(input, value);
 }
 
 async function clickDialogButton(dlg: Locator, pattern: RegExp): Promise<void> {
   const footer = dlg.locator(".el-dialog__footer button, button").filter({ hasText: pattern }).last();
-  await footer.waitFor({ state: "visible", timeout: 8000 });
-  await footer.click();
+  if (await footer.count()) {
+    const box = await footer.boundingBox().catch(() => null);
+    if (box) {
+      const page = dlg.page();
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      return;
+    }
+    await footer.click({ force: true, timeout: 8000 });
+    return;
+  }
+  throw new Error(`Dialog button not found: ${pattern.source}`);
+}
+
+/** Click button by walking DOM + iframes (works when Playwright can't "see" the dialog). */
+async function clickButtonByDomWalk(page: Page, pattern: RegExp): Promise<boolean> {
+  const source = pattern.source;
+  const flags = pattern.flags;
+  for (const frame of page.frames()) {
+    const clicked = await frame
+      .evaluate(
+        ({ source, flags }) => {
+          const re = new RegExp(source, flags);
+          const walk = (doc: Document): boolean => {
+            for (const el of doc.querySelectorAll("button, .el-button, a")) {
+              const text = (el.textContent ?? "").replace(/\s+/g, " ").trim();
+              if (!re.test(text)) continue;
+              (el as HTMLElement).click();
+              return true;
+            }
+            for (const iframe of doc.querySelectorAll("iframe")) {
+              try {
+                const inner = iframe.contentDocument;
+                if (inner && walk(inner)) return true;
+              } catch {
+                /* cross-origin */
+              }
+            }
+            return false;
+          };
+          return walk(document);
+        },
+        { source, flags }
+      )
+      .catch(() => false);
+    if (clicked) return true;
+  }
+  return false;
+}
+
+async function createDialogLocator(page: Page): Promise<Locator | null> {
+  const roots: Array<Page | Frame> = [page, ...page.frames()];
+  for (const root of roots) {
+    const dlg = root.locator(".el-dialog, [role='dialog']").filter({ hasText: /Essential information/i }).last();
+    if ((await dlg.count()) > 0 && (await dlg.locator('input[type="password"]').count()) >= 2) {
+      return dlg;
+    }
+  }
+  for (const root of roots) {
+    const dlg = root.locator(".el-dialog, [role='dialog']").last();
+    if ((await dlg.count()) > 0 && (await dlg.locator('input[type="password"]').count()) >= 2) {
+      return dlg;
+    }
+  }
+  return null;
+}
+
+type LabelInputCoord = { x: number; y: number; label: string };
+
+/** Find Account / Login password / Confirm password by form label (not field order). */
+async function findCreateInputsByLabel(page: Page): Promise<LabelInputCoord[]> {
+  return page.mainFrame().evaluate(() => {
+    const out: LabelInputCoord[] = [];
+    const wanted: Array<{ label: string; re: RegExp }> = [
+      { label: "Account", re: /^account$/i },
+      { label: "Login password", re: /^login password$/i },
+      { label: "Confirm password", re: /^confirm password$/i },
+    ];
+
+    const collect = (doc: Document, ox = 0, oy = 0): void => {
+      const dialogs = [...doc.querySelectorAll(".el-dialog, [role='dialog']")].filter((dlg) =>
+        /essential information/i.test(dlg.textContent ?? "")
+      );
+      const roots = dialogs.length ? dialogs : [...doc.querySelectorAll(".el-dialog, [role='dialog']")];
+
+      for (const root of roots) {
+        for (const { label, re } of wanted) {
+          if (out.some((h) => h.label === label)) continue;
+          for (const lbl of root.querySelectorAll(".el-form-item__label, label")) {
+            const text = (lbl.textContent ?? "").replace(/\*/g, "").replace(/\s+/g, " ").trim();
+            if (!re.test(text)) continue;
+            const input = lbl.closest(".el-form-item")?.querySelector("input") as HTMLInputElement | null;
+            if (!input) continue;
+            const r = input.getBoundingClientRect();
+            if (r.width < 8 || r.height < 8) continue;
+            out.push({ label, x: ox + r.x + r.width / 2, y: oy + r.y + r.height / 2 });
+            break;
+          }
+        }
+      }
+
+      for (const iframe of doc.querySelectorAll("iframe")) {
+        try {
+          const ir = iframe.getBoundingClientRect();
+          const inner = iframe.contentDocument;
+          if (inner) collect(inner, ox + ir.x, oy + ir.y);
+        } catch {
+          /* cross-origin */
+        }
+      }
+    };
+
+    collect(document);
+    return out;
+  }).catch(() => [] as LabelInputCoord[]);
+}
+
+async function typeAtCoord(page: Page, x: number, y: number, value: string): Promise<void> {
+  await page.mouse.click(x, y);
+  await page.waitForTimeout(120);
+  await page.keyboard.press("Control+A");
+  await page.keyboard.press("Backspace");
+  await page.keyboard.type(value, { delay: 30 });
+}
+
+async function fillCreateByLabelsDom(
+  page: Page,
+  username: string,
+  password: string
+): Promise<boolean> {
+  const ok = await page
+    .mainFrame()
+    .evaluate(
+      ({ user, pass }) => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+        const setVal = (el: HTMLInputElement, val: string) => {
+          el.focus();
+          el.setAttribute("autocomplete", "off");
+          setter?.call(el, val);
+          el.dispatchEvent(new InputEvent("input", { bubbles: true, data: val, inputType: "insertText" }));
+          el.dispatchEvent(new Event("change", { bubbles: true }));
+          el.dispatchEvent(new Event("blur", { bubbles: true }));
+        };
+
+        const findInput = (root: Element, re: RegExp): HTMLInputElement | null => {
+          for (const lbl of root.querySelectorAll(".el-form-item__label, label")) {
+            const text = (lbl.textContent ?? "").replace(/\*/g, "").replace(/\s+/g, " ").trim();
+            if (!re.test(text)) continue;
+            const input = lbl.closest(".el-form-item")?.querySelector("input") as HTMLInputElement | null;
+            if (input) return input;
+          }
+          return null;
+        };
+
+        const fillDialog = (doc: Document): boolean => {
+          const dialogs = [...doc.querySelectorAll(".el-dialog, [role='dialog']")].filter((dlg) =>
+            /essential information/i.test(dlg.textContent ?? "")
+          );
+          const roots = dialogs.length ? dialogs : [...doc.querySelectorAll(".el-dialog, [role='dialog']")];
+
+          for (const root of roots) {
+            const account = findInput(root, /^account$/i);
+            const loginPass = findInput(root, /^login password$/i);
+            const confirmPass = findInput(root, /^confirm password$/i);
+            if (!account || !loginPass || !confirmPass) continue;
+
+            setVal(account, user);
+            setVal(loginPass, pass);
+            setVal(confirmPass, pass);
+
+            if (account.value !== user || loginPass.value !== pass || confirmPass.value !== pass) continue;
+
+            const saveBtn = [...root.querySelectorAll("button, .el-button")].find((b) =>
+              /^\s*save\s*$/i.test((b.textContent ?? "").trim())
+            );
+            if (!saveBtn) continue;
+            (saveBtn as HTMLElement).click();
+            return true;
+          }
+          return false;
+        };
+
+        const walk = (doc: Document): boolean => {
+          if (fillDialog(doc)) return true;
+          for (const iframe of doc.querySelectorAll("iframe")) {
+            try {
+              const inner = iframe.contentDocument;
+              if (inner && walk(inner)) return true;
+            } catch {
+              /* cross-origin */
+            }
+          }
+          return false;
+        };
+
+        return walk(document);
+      },
+      { user: username, pass: password }
+    )
+    .catch(() => false);
+  return ok;
+}
+
+async function fillCreateByLabelCoords(
+  page: Page,
+  username: string,
+  password: string
+): Promise<boolean> {
+  await page.bringToFront().catch(() => {});
+
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const fields = await findCreateInputsByLabel(page);
+    const account = fields.find((f) => f.label === "Account");
+    const loginPass = fields.find((f) => f.label === "Login password");
+    const confirmPass = fields.find((f) => f.label === "Confirm password");
+    if (!account || !loginPass || !confirmPass) {
+      await page.waitForTimeout(400);
+      continue;
+    }
+
+    await typeAtCoord(page, account.x, account.y, username);
+    await typeAtCoord(page, loginPass.x, loginPass.y, password);
+    await typeAtCoord(page, confirmPass.x, confirmPass.y, password);
+    await page.waitForTimeout(300);
+
+    const savePt = await page
+      .mainFrame()
+      .evaluate(() => {
+        const walk = (doc: Document, ox = 0, oy = 0): { x: number; y: number } | null => {
+          for (const dlg of doc.querySelectorAll(".el-dialog, [role='dialog']")) {
+            if (!/essential information/i.test(dlg.textContent ?? "")) continue;
+            for (const btn of dlg.querySelectorAll("button, .el-button")) {
+              const text = (btn.textContent ?? "").replace(/\s+/g, " ").trim();
+              if (!/^save$/i.test(text)) continue;
+              const r = btn.getBoundingClientRect();
+              if (r.width < 8) continue;
+              return { x: ox + r.x + r.width / 2, y: oy + r.y + r.height / 2 };
+            }
+          }
+          for (const iframe of doc.querySelectorAll("iframe")) {
+            try {
+              const ir = iframe.getBoundingClientRect();
+              const inner = iframe.contentDocument;
+              if (inner) {
+                const hit = walk(inner, ox + ir.x, oy + ir.y);
+                if (hit) return hit;
+              }
+            } catch {
+              /* cross-origin */
+            }
+          }
+          return null;
+        };
+        return walk(document);
+      })
+      .catch(() => null);
+
+    if (savePt) {
+      await page.mouse.click(savePt.x, savePt.y);
+      return true;
+    }
+    if (await clickButtonByDomWalk(page, /^\s*save\s*$/i)) return true;
+  }
+  return false;
+}
+
+async function fillAndSaveCreateDialog(
+  page: Page,
+  username: string,
+  password: string
+): Promise<{ ok: boolean; error?: string }> {
+  for (let i = 0; i < 10; i++) {
+    if (await fillCreateByLabelsDom(page, username, password)) return { ok: true };
+    if (await fillCreateByLabelCoords(page, username, password)) return { ok: true };
+    await page.waitForTimeout(400);
+  }
+
+  const dlg = await createDialogLocator(page);
+  if (dlg) {
+    try {
+      const accountInput = dlg
+        .locator(".el-form-item")
+        .filter({ has: dlg.locator(".el-form-item__label").filter({ hasText: /^Account$/i }) })
+        .locator("input")
+        .first();
+      const loginInput = dlg
+        .locator(".el-form-item")
+        .filter({ has: dlg.locator(".el-form-item__label").filter({ hasText: /^Login password$/i }) })
+        .locator('input[type="password"]')
+        .first();
+      const confirmInput = dlg
+        .locator(".el-form-item")
+        .filter({ has: dlg.locator(".el-form-item__label").filter({ hasText: /^Confirm password$/i }) })
+        .locator('input[type="password"]')
+        .first();
+
+      await typeInto(accountInput, username);
+      await typeInto(loginInput, password);
+      await typeInto(confirmInput, password);
+      await clickDialogButton(dlg, /^\s*save\s*$/i);
+      return { ok: true };
+    } catch (err) {
+      log("create", `locator fill failed (${err instanceof Error ? err.message : err})`);
+    }
+  }
+
+  const labels = (await findCreateInputsByLabel(page)).map((f) => f.label).join(", ");
+  return {
+    ok: false,
+    error: labels
+      ? `create form fields found (${labels}) but fill failed`
+      : "create dialog not found",
+  };
 }
 
 /* ----------------------------------------------------------- user listing */
@@ -173,16 +485,7 @@ async function clickNewAccount(page: Page): Promise<void> {
   await page.bringToFront().catch(() => {});
   await page.waitForTimeout(600);
 
-  const main = page.mainFrame();
-  const ordered = [
-    main,
-    ...page.frames().filter((f) => f !== main && !/\/player\//i.test(f.url())),
-    ...page.frames().filter((f) => /\/player\//i.test(f.url())),
-  ];
-  const tried = new Set<Frame>();
-  for (const frame of ordered) {
-    if (tried.has(frame)) continue;
-    tried.add(frame);
+  for (const frame of page.frames()) {
     if (await clickNewAccountInFrame(page, frame)) {
       log("create", `clicked New Account (${frame.url() || "main"})`);
       return;
@@ -242,161 +545,6 @@ async function ensureUserList(page: Page): Promise<void> {
 
   await screenshot(page, "user-list-nav-failed");
   throw new Error("Not logged in on /admin. Open User List in bot Chrome, then retry.");
-}
-
-async function waitForCreateDialog(page: Page, timeoutMs = 18000): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    for (const frame of page.frames()) {
-      const found = await frame
-        .evaluate(() => {
-          const visible = (el: Element) => {
-            const rect = el.getBoundingClientRect();
-            return rect.width > 20 && rect.height > 20;
-          };
-          for (const dlg of document.querySelectorAll(".el-dialog")) {
-            if (!visible(dlg)) continue;
-            if (dlg.querySelector('input[type="password"]')) return true;
-            const title = dlg.querySelector(".el-dialog__title, .el-dialog__header")?.textContent ?? "";
-            if (/essential information/i.test(title)) return true;
-          }
-          return false;
-        })
-        .catch(() => false);
-      if (found) return true;
-    }
-    await page.waitForTimeout(400);
-  }
-  return false;
-}
-
-async function readDomMessages(page: Page): Promise<string> {
-  return page.evaluate(() =>
-    [...document.querySelectorAll(".el-message, .el-form-item__error, .el-message-box__message")]
-      .map((el) => el.textContent?.trim())
-      .filter(Boolean)
-      .join(" ")
-  );
-}
-
-async function createDialogStillOpen(page: Page): Promise<boolean> {
-  for (const frame of page.frames()) {
-    const open = await frame
-      .evaluate(() => {
-        for (const dlg of document.querySelectorAll(".el-dialog")) {
-          const rect = dlg.getBoundingClientRect();
-          if (rect.width < 20 || rect.height < 20) continue;
-          if (dlg.querySelector('input[type="password"]')) return true;
-        }
-        return false;
-      })
-      .catch(() => false);
-    if (open) return true;
-  }
-  return false;
-}
-
-async function fillAndSaveCreateDialog(page: Page, username: string, password: string): Promise<{ ok: boolean; error?: string }> {
-  const fillScript = ({ user, pass }: { user: string; pass: string }) => {
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-    const setVal = (el: HTMLInputElement, val: string) => {
-      el.setAttribute("autocomplete", "off");
-      setter?.call(el, val);
-      el.dispatchEvent(new InputEvent("input", { bubbles: true, data: val, inputType: "insertText" }));
-      el.dispatchEvent(new Event("change", { bubbles: true }));
-      el.dispatchEvent(new Event("blur", { bubbles: true }));
-    };
-
-    const norm = (s: string) => s.replace(/\s+/g, " ").replace(/\*/g, "").trim();
-
-    const findDialog = (): Element | undefined => {
-      const visible = (el: Element) => {
-        const rect = el.getBoundingClientRect();
-        return rect.width > 20 && rect.height > 20;
-      };
-      for (const dlg of document.querySelectorAll(".el-dialog")) {
-        if (!visible(dlg)) continue;
-        if (dlg.querySelector('input[type="password"]')) return dlg;
-        const title = dlg.querySelector(".el-dialog__title, .el-dialog__header")?.textContent ?? "";
-        if (/essential information/i.test(title)) return dlg;
-      }
-      return undefined;
-    };
-
-    const inputByLabel = (dlg: Element, pattern: RegExp): HTMLInputElement | null => {
-      for (const item of dlg.querySelectorAll(".el-form-item")) {
-        const label = norm(item.querySelector(".el-form-item__label")?.textContent ?? "");
-        if (!pattern.test(label)) continue;
-        const input = item.querySelector("input") as HTMLInputElement | null;
-        if (input) return input;
-      }
-      return null;
-    };
-
-    const dlg = findDialog();
-    if (!dlg) return { ok: false, error: "create dialog not found" };
-
-    let accountInput = inputByLabel(dlg, /^account/i);
-    let loginPass = inputByLabel(dlg, /login\s*password/i);
-    let confirmPass = inputByLabel(dlg, /confirm\s*password/i);
-
-    const passInputs = [...dlg.querySelectorAll('input[type="password"]')] as HTMLInputElement[];
-    if (!loginPass && passInputs.length >= 1) loginPass = passInputs[0];
-    if (!confirmPass && passInputs.length >= 2) confirmPass = passInputs[1];
-
-    if (!accountInput) {
-      const textInputs = [
-        ...dlg.querySelectorAll(
-          'input.el-input__inner:not([type="password"]), input:not([type="password"]):not([type="hidden"])'
-        ),
-      ].filter((el) => (el as HTMLInputElement).type !== "checkbox") as HTMLInputElement[];
-      accountInput = textInputs[0] ?? null;
-    }
-
-    if (!accountInput || !loginPass || !confirmPass) {
-      return {
-        ok: false,
-        error: `create form fields missing (account=${Boolean(accountInput)}, login=${Boolean(loginPass)}, confirm=${Boolean(confirmPass)})`,
-      };
-    }
-
-    // Clear browser autofill (agent creds) then fill player account from Spinora job.
-    for (const el of [accountInput, loginPass, confirmPass]) {
-      setVal(el, "");
-    }
-    setVal(accountInput, user);
-    setVal(loginPass, pass);
-    setVal(confirmPass, pass);
-
-    // Second pass if autofill or Vue overwrote values.
-    if (accountInput.value !== user || loginPass.value !== pass || confirmPass.value !== pass) {
-      for (const el of [accountInput, loginPass, confirmPass]) setVal(el, "");
-      setVal(accountInput, user);
-      setVal(loginPass, pass);
-      setVal(confirmPass, pass);
-    }
-
-    if (accountInput.value !== user || loginPass.value !== pass || confirmPass.value !== pass) {
-      return {
-        ok: false,
-        error: `form values mismatch (account="${accountInput.value}", passLen=${loginPass.value.length}, confirmLen=${confirmPass.value.length})`,
-      };
-    }
-
-    const saveBtn = [...dlg.querySelectorAll("button, .el-button")].find((b) =>
-      /^\s*save\s*$/i.test((b.textContent ?? "").trim())
-    );
-    if (!saveBtn) return { ok: false, error: "Save button not found" };
-    (saveBtn as HTMLElement).click();
-    return { ok: true };
-  };
-
-  for (const frame of page.frames()) {
-    const result = await frame.evaluate(fillScript, { user: username, pass: password }).catch(() => null);
-    if (result?.ok) return result;
-    if (result && !result.ok && result.error !== "create dialog not found") return result;
-  }
-  return { ok: false, error: "create dialog not found" };
 }
 
 function searchInput(page: Page): Locator {
@@ -470,12 +618,37 @@ async function findRow(page: Page, account: string): Promise<Locator> {
   return row;
 }
 
-/** Does an account name already exist? (exact match, non-throwing) */
-async function accountExists(page: Page, account: string): Promise<boolean> {
-  await searchAccount(page, account);
-  return accountRow(page, account)
-    .isVisible()
-    .catch(() => false);
+async function accountExistsInList(page: Page, account: string): Promise<boolean> {
+  try {
+    await searchAccount(page, account);
+    if (await accountRow(page, account).isVisible().catch(() => false)) return true;
+  } catch {
+    /* search UI not visible — try DOM */
+  }
+
+  for (const frame of page.frames()) {
+    const found = await frame
+      .evaluate((term) => {
+        const walk = (doc: Document): boolean => {
+          for (const cell of doc.querySelectorAll(".el-table__body-wrapper td .cell, .el-table__body td")) {
+            if (cell.textContent?.trim() === term) return true;
+          }
+          for (const iframe of doc.querySelectorAll("iframe")) {
+            try {
+              const inner = iframe.contentDocument;
+              if (inner && walk(inner)) return true;
+            } catch {
+              /* cross-origin */
+            }
+          }
+          return false;
+        };
+        return walk(document);
+      }, account)
+      .catch(() => false);
+    if (found) return true;
+  }
+  return false;
 }
 
 /* -------------------------------------------------------- balance reading */
@@ -596,16 +769,11 @@ type CreateOutcome =
 
 async function tryCreateOnce(page: Page, username: string, password: string): Promise<CreateOutcome> {
   await ensureUserList(page);
+  await closeOverlays(page);
   await clickNewAccount(page);
   log("create", `opening create dialog for ${username}`);
 
-  await page.waitForTimeout(1200);
-
-  if (!(await waitForCreateDialog(page))) {
-    log("create", "dialog wait timed out — attempting fill anyway");
-  }
-
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(3000);
 
   const filled = await fillAndSaveCreateDialog(page, username, password);
   if (!filled.ok) {
@@ -615,25 +783,28 @@ async function tryCreateOnce(page: Page, username: string, password: string): Pr
   log("create", `filled Account=${username}, password+confirm, clicked Save`);
 
   await page.waitForTimeout(2500);
-  const messages = await readDomMessages(page);
+  const messages = await readPanelMessages(page);
 
-  let stillOpen = await createDialogStillOpen(page);
-  if (stillOpen && !DUPLICATE_RE.test(messages)) {
-    await page.waitForTimeout(1500);
-    stillOpen = await createDialogStillOpen(page);
-  }
+  await closeOverlays(page);
+  await page.waitForTimeout(1500);
 
-  if (!stillOpen) {
-    await closeOverlays(page);
+  if (await accountExistsInList(page, username)) {
+    log("create", `verified ${username} in User List`);
     return { status: "created" };
   }
 
-  await closeOverlays(page);
   if (DUPLICATE_RE.test(messages)) {
     log("create", `username ${username} already exists (${messages})`);
     return { status: "duplicate" };
   }
-  return { status: "error", message: messages || "create dialog stayed open (unknown panel error)" };
+
+  await screenshot(page, "create-not-in-list");
+  return {
+    status: "error",
+    message:
+      messages ||
+      `Account "${username}" not found in User List after Save — form may not have submitted correctly`,
+  };
 }
 
 export async function createAccount(
@@ -645,7 +816,11 @@ export async function createAccount(
   for (let attempt = 0; attempt < 20; attempt++) {
     const username = variant(baseUsername, attempt);
 
-    // Skip pre-search — CDP often can't see the search box; duplicates handled in tryCreateOnce.
+    if (await accountExistsInList(page, username)) {
+      log("create", `"${username}" already exists — trying next variant`);
+      continue;
+    }
+
     const outcome = await tryCreateOnce(page, username, password);
     if (outcome.status === "created") {
       log("create", `created ${username}`);

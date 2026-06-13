@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { SITE_NAME } from "@/lib/constants";
+import { SITE_NAME, DAILY_SPIN_ENABLED } from "@/lib/constants";
 import { CoinFlipLogo } from "@/components/ui/coin-flip-logo";
 
 const ROTATING_WORDS = ["Experience", "Rewards", "Thrills", "Action", "Wins"];
@@ -49,9 +49,18 @@ export function Hero() {
               </span>
             </div>
 
-            <Link href="/spin" className="spin-now-btn inline-block">
-              SPIN NOW
-            </Link>
+            {DAILY_SPIN_ENABLED ? (
+              <Link href="/spin" className="spin-now-btn inline-block">
+                SPIN NOW
+              </Link>
+            ) : (
+              <Link
+                href="/spin"
+                className="inline-flex items-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/10 px-6 py-3 text-sm font-bold text-purple-200 hover:bg-purple-500/20 transition-colors"
+              >
+                Daily Spin — Coming Soon
+              </Link>
+            )}
           </div>
 
           <div className="relative flex items-center justify-center min-h-[200px] lg:min-h-[260px] hero-scale-in">

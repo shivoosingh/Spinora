@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   ChevronDown,
   Crown,
-  Gamepad2,
   LayoutDashboard,
   LogOut,
   MessageSquare,
@@ -24,13 +23,12 @@ import { toast } from "sonner";
 
 const MENU_LINKS = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/dashboard/requests", label: "Game Requests", icon: Gamepad2 },
   { href: "/dashboard/messages", label: "Messages", icon: MessageSquare },
   { href: "/dashboard/vip", label: "VIP Status", icon: Crown },
   { href: "/dashboard/referrals", label: "Referrals", icon: Users },
   { href: "/dashboard/reviews", label: "Reviews", icon: StarHalf },
   { href: "/dashboard/tasks", label: "Daily Tasks", icon: Target },
-  { href: "/spin", label: "Daily Spin", icon: Sparkles },
+  { href: "/spin", label: "Daily Spin", icon: Sparkles, comingSoon: true },
 ];
 
 export function UserAccountMenu({ compact = false }: { compact?: boolean }) {
@@ -142,7 +140,7 @@ export function UserAccountMenu({ compact = false }: { compact?: boolean }) {
             {email && <p className="text-xs text-muted-foreground truncate">{email}</p>}
           </div>
           <nav className="py-1">
-            {MENU_LINKS.map(({ href, label, icon: Icon }) => (
+            {MENU_LINKS.map(({ href, label, icon: Icon, comingSoon }) => (
               <Link
                 key={href}
                 href={href}
@@ -152,6 +150,11 @@ export function UserAccountMenu({ compact = false }: { compact?: boolean }) {
               >
                 <Icon className="h-4 w-4 shrink-0" />
                 <span className="flex-1">{label}</span>
+                {comingSoon && (
+                  <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                    Soon
+                  </span>
+                )}
                 {href === "/dashboard/messages" && <UnreadBadge count={unreadMessages} />}
               </Link>
             ))}

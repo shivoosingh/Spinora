@@ -1,10 +1,12 @@
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { SpinPageClient } from "@/components/spin/spin-page-client";
+import { SpinComingSoon } from "@/components/spin/spin-coming-soon";
 import { createMetadata } from "@/lib/seo/metadata";
 import { createClient } from "@/lib/supabase/server";
 import { getSpinStatus, getSpinHistory } from "@/lib/actions/spin";
 import { DAILY_SPINS_BY_TIER } from "@/lib/spin/prizes";
+import { DAILY_SPIN_ENABLED } from "@/lib/constants";
 
 export const metadata = createMetadata({
   title: "Spin the Wheel",
@@ -39,13 +41,17 @@ export default async function SpinPage() {
   return (
     <>
       <Navbar />
-      <SpinPageClient
-        isLoggedIn={!!user}
-        dailyLimit={dailyLimit}
-        remainingSpins={remaining}
-        nextFreeSpinMs={nextFreeSpinMs}
-        history={history}
-      />
+      {DAILY_SPIN_ENABLED ? (
+        <SpinPageClient
+          isLoggedIn={!!user}
+          dailyLimit={dailyLimit}
+          remainingSpins={remaining}
+          nextFreeSpinMs={nextFreeSpinMs}
+          history={history}
+        />
+      ) : (
+        <SpinComingSoon />
+      )}
       <Footer fullWidth />
     </>
   );

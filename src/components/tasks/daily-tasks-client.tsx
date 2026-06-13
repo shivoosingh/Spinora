@@ -176,17 +176,28 @@ export function DailyTasksClient({ board, onReload }: DailyTasksClientProps) {
                   <p className="text-[10px] text-muted-foreground">{levelMeta.pointsRequired} pts required</p>
                 </div>
               </div>
-              {levelStat?.status === "locked" && (
-                unlockInfo.waiting ? (
-                  <p className="text-xs text-amber-400 mt-2 flex items-center gap-1">
-                    <Clock className="h-3 w-3" /> Unlocks in {formatCountdown(unlockInfo.msRemaining)} — come back tomorrow
-                  </p>
-                ) : (
+              {levelStat?.status === "locked" && (() => {
+                const prev = board.levelProgress.find((p) => p.level === selectedLevel - 1);
+                if (prev?.status === "completed" && !prev.reward_granted) {
+                  return (
+                    <p className="text-xs text-amber-400 mt-2 flex items-center gap-1">
+                      <Lock className="h-3 w-3" /> Claim your Level {selectedLevel - 1} reward to unlock this level
+                    </p>
+                  );
+                }
+                if (unlockInfo.waiting) {
+                  return (
+                    <p className="text-xs text-amber-400 mt-2 flex items-center gap-1">
+                      <Clock className="h-3 w-3" /> Unlocks in {formatCountdown(unlockInfo.msRemaining)} — one level every 24 hours
+                    </p>
+                  );
+                }
+                return (
                   <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
                     <Lock className="h-3 w-3" /> Complete &amp; claim Level {selectedLevel - 1} to unlock these tasks
                   </p>
-                )
-              )}
+                );
+              })()}
 
               {canClaim && (
                 <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3">

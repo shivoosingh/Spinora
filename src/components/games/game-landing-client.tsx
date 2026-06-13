@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   BadgeCheck,
@@ -10,14 +9,13 @@ import {
   ChevronUp,
   Download,
   Info,
-  Loader2,
   MapPin,
   Sparkles,
   Trophy,
   UserPlus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { createGameRequestBySlug } from "@/lib/actions/game-requests";
+import { getMyGameAccount } from "@/lib/actions/game-loads";
 import {
   GAME_BONUS_RULES,
   getOtherGames,
@@ -30,7 +28,6 @@ import {
   generateRandomWinnersList,
   type GameWinner,
 } from "@/lib/games/recent-winners";
-import { getMyGameAccount } from "@/lib/actions/game-loads";
 import { GameOtherGames } from "@/components/games/game-other-games";
 import { GameDepositSection } from "@/components/games/game-deposit-section";
 import { GameWalletLoadSection } from "@/components/games/game-wallet-load-section";
@@ -47,7 +44,6 @@ interface GameLandingClientProps {
 export function GameLandingClient({ game, autoCreate, walletLoadEnabled }: GameLandingClientProps) {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
-  const [creating, setCreating] = useState(false);
   const [showHowItWorks, setShowHowItWorks] = useState(false);
   const howItWorksRef = useRef<HTMLDivElement>(null);
   const autoCreateAttempted = useRef(false);
@@ -89,23 +85,7 @@ export function GameLandingClient({ game, autoCreate, walletLoadEnabled }: GameL
       return;
     }
 
-    if (walletLoadEnabled) {
-      openWalletPanel();
-      return;
-    }
-
-    setCreating(true);
-
-    const result = await createGameRequestBySlug(game.slug);
-
-    if (result.error) {
-      toast.error(result.error);
-    } else {
-      toast.success(`Account request sent for ${game.name}! We'll notify you when it's ready.`);
-      router.push("/dashboard/requests");
-    }
-
-    setCreating(false);
+    openWalletPanel();
   }
 
   useEffect(() => {
@@ -316,24 +296,15 @@ export function GameLandingClient({ game, autoCreate, walletLoadEnabled }: GameL
         <button
           type="button"
           onClick={handleCreateAccount}
-          disabled={creating}
           className={cn(
             "w-full flex items-center justify-center gap-2 rounded-xl py-4 px-6 text-base font-bold transition-opacity shadow-lg",
             game.upcoming
               ? "text-white/80 bg-[#2a2a2a] border border-white/10 cursor-not-allowed opacity-80"
-              : "text-black bg-gradient-to-r from-yellow-400 via-orange-400 to-red-500 hover:opacity-95 disabled:opacity-60 disabled:cursor-wait shadow-orange-500/20"
+              : "text-black bg-gradient-to-r from-yellow-400 via-orange-400 to-red-500 hover:opacity-95 shadow-orange-500/20"
           )}
         >
-          {creating ? (
-            <Loader2 className="h-5 w-5 animate-spin" />
-          ) : (
-            <UserPlus className="h-5 w-5" />
-          )}
-          {game.upcoming
-            ? "Coming Soon"
-            : walletLoadEnabled
-              ? "Create Account"
-              : "Create Game Account"}
+          <UserPlus className="h-5 w-5" />
+          {game.upcoming ? "Coming Soon" : "Create Account"}
         </button>
 
         <div className="grid grid-cols-2 gap-3">
@@ -404,29 +375,23 @@ export function GameLandingClient({ game, autoCreate, walletLoadEnabled }: GameL
               <li className="flex gap-3">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-400 text-xs font-bold">1</span>
                 <span>
-                  Tap <strong className="text-white">Create Game Account</strong> — we&apos;ll send your request to our team.
+                  Tap <strong className="text-white">Create Account</strong> to open your {game.name} panel.
                 </span>
               </li>
               <li className="flex gap-3">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-400 text-xs font-bold">2</span>
                 <span>
-                  Download the app with the button above while you wait for approval.
+                  Download the app with the button above, then use your login from the panel.
                 </span>
               </li>
               <li className="flex gap-3">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-400 text-xs font-bold">3</span>
                 <span>
-                  Once approved, check <Link href="/dashboard/requests" className="text-orange-400 hover:underline">Game Requests</Link> for your login credentials.
-                </span>
-              </li>
-              <li className="flex gap-3">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-400 text-xs font-bold">4</span>
-                <span>
                   Use the <strong className="text-white">Deposit</strong> section to load funds — pick PayPal, Chime, Cash App, Bitcoin, or Venmo and upload your payment screenshot.
                 </span>
               </li>
               <li className="flex gap-3">
-                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-400 text-xs font-bold">5</span>
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-400 text-xs font-bold">4</span>
                 <span>
                   Load ${rules.minDeposit}–${rules.maxDeposit}, play, and redeem at {rules.redeemMin}x–{rules.redeemMax}x rollover.
                 </span>

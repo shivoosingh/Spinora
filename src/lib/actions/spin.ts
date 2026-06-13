@@ -10,6 +10,7 @@ import {
   pickWeightedPrize,
 } from "@/lib/spin/prizes";
 import { creditUserWallet } from "@/lib/actions/wallet";
+import { DAILY_SPIN_ENABLED } from "@/lib/constants";
 
 export interface SpinResult {
   success?: boolean;
@@ -84,6 +85,10 @@ export async function getSpinStatus(): Promise<SpinStatus | { error: string }> {
 }
 
 export async function spinWheel(): Promise<SpinResult> {
+  if (!DAILY_SPIN_ENABLED) {
+    return { error: "Daily Spin is coming soon. Check back later!" };
+  }
+
   const supabase = await createClient();
   const {
     data: { user },

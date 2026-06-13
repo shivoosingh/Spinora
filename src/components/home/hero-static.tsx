@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { SITE_NAME } from "@/lib/constants";
+import { SITE_NAME, DAILY_SPIN_ENABLED } from "@/lib/constants";
 
 /** Server-rendered hero — paints immediately for mobile LCP (no client JS). */
 export function HeroStatic() {
@@ -22,9 +22,18 @@ export function HeroStatic() {
             <p className="text-2xl sm:text-3xl lg:text-4xl font-bold italic text-amber-400 mb-6">
               Experience
             </p>
-            <Link href="/spin" className="spin-now-btn inline-block">
-              SPIN NOW
-            </Link>
+            {DAILY_SPIN_ENABLED ? (
+              <Link href="/spin" className="spin-now-btn inline-block">
+                SPIN NOW
+              </Link>
+            ) : (
+              <Link
+                href="/spin"
+                className="inline-flex items-center gap-2 rounded-xl border border-purple-500/40 bg-purple-500/10 px-6 py-3 text-sm font-bold text-purple-200 hover:bg-purple-500/20 transition-colors"
+              >
+                Daily Spin — Coming Soon
+              </Link>
+            )}
           </div>
 
           <div className="relative flex items-center justify-center min-h-[200px] lg:min-h-[260px]">

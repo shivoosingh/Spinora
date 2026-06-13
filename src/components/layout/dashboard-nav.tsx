@@ -30,7 +30,6 @@ import { UnreadBadge } from "@/components/ui/unread-badge";
 
 const userLinks = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/dashboard/requests", label: "Game Requests", icon: Gamepad2 },
   { href: "/dashboard/deposits", label: "Deposits", icon: Banknote },
   { href: "/dashboard/messages", label: "Messages", icon: MessageSquare },
   { href: "/dashboard/vip", label: "VIP Status", icon: Crown },

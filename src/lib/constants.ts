@@ -1,5 +1,8 @@
 export const SITE_NAME = "Spinora";
 
+/** Set to true when the daily spin wheel is ready for players. */
+export const DAILY_SPIN_ENABLED = false;
+
 /** VIP points awarded per successful referral */
 export const REFERRAL_REWARD_POINTS = 10;
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://spinoracasinos.com";

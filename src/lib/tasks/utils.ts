@@ -40,6 +40,25 @@ export function isTaskUnlocked(
 
   const levelStat = getLevelStatus(task.level, levelProgress);
   if (levelStat === "locked") {
+    if (task.level > 1) {
+      const prev = levelProgress.find((p) => p.level === task.level - 1);
+      if (prev?.status === "completed" && !prev.reward_granted) {
+        return {
+          unlocked: false,
+          reason: `Claim your Level ${task.level - 1} reward first`,
+          status: "locked",
+        };
+      }
+      const unlock = getLevelUnlockInfo(task.level, levelProgress);
+      if (unlock.waiting) {
+        const hours = Math.ceil(unlock.msRemaining / (60 * 60 * 1000));
+        return {
+          unlocked: false,
+          reason: `Level ${task.level} unlocks in about ${hours}h`,
+          status: "locked",
+        };
+      }
+    }
     return { unlocked: false, reason: `Complete Level ${task.level - 1} first`, status: "locked" };
   }
 

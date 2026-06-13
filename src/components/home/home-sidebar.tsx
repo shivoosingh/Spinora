@@ -13,7 +13,6 @@ import {
   Crown,
   Sparkles,
   LayoutDashboard,
-  Gamepad2,
   MessageSquare,
   Users,
   Headphones,
@@ -36,13 +35,12 @@ const SIDEBAR_LINKS: { id: GameTab; label: string; icon: React.ElementType }[] =
 
 const ACCOUNT_LINKS = [
   { href: "/", label: "Home", icon: LayoutDashboard },
-  { href: "/dashboard/requests", label: "Game Requests", icon: Gamepad2 },
   { href: "/dashboard/messages", label: "Messages", icon: MessageSquare },
   { href: "/dashboard/vip", label: "VIP Status", icon: Crown },
   { href: "/dashboard/referrals", label: "Referrals", icon: Users },
   { href: "/dashboard/reviews", label: "Reviews", icon: StarHalf },
   { href: "/dashboard/tasks", label: "Daily Tasks", icon: Target },
-  { href: "/spin", label: "Daily Spin", icon: Sparkles },
+  { href: "/spin", label: "Daily Spin", icon: Sparkles, comingSoon: true },
 ];
 
 interface HomeSidebarProps {
@@ -126,7 +124,7 @@ export function HomeSidebar({
             My Account
           </p>
           <nav className="space-y-1">
-            {ACCOUNT_LINKS.map(({ href, label, icon: Icon }) => {
+            {ACCOUNT_LINKS.map(({ href, label, icon: Icon, comingSoon }) => {
               const active = pathname === href || (href !== "/" && pathname.startsWith(href));
               return (
                 <Link
@@ -141,6 +139,11 @@ export function HomeSidebar({
                 >
                   <Icon className="h-4 w-4 shrink-0" />
                   <span className="flex-1">{label}</span>
+                  {comingSoon && (
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                      Soon
+                    </span>
+                  )}
                   {href === "/dashboard/messages" && (
                     <UnreadBadge count={unreadMessages} />
                   )}
@@ -198,7 +201,7 @@ export function HomeSidebar({
               <Sparkles className="h-5 w-5 text-amber-300" />
               <h3 className="font-semibold text-sm text-white">New Here?</h3>
             </div>
-            <p className="text-xs text-purple-200/70 mb-3">Claim your free account & daily spin!</p>
+            <p className="text-xs text-purple-200/70 mb-3">Claim your free account & start playing!</p>
             <Link
               href="/register"
               className="block text-center py-2 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 text-gray-900 text-xs font-bold hover:opacity-90 transition-opacity"
