@@ -11,8 +11,11 @@ import {
   type TaskLevelMeta,
 } from "@/lib/tasks/definitions";
 import type { TaskSubmission, UserLevelProgress } from "@/lib/tasks/types";
+import { normalizeLevelProgress, resolveActiveLevel } from "@/lib/tasks/level-progress";
 import { notifyAdminOfTaskSubmission } from "@/lib/telegram/notify-admin-task-submission";
 import { notifyAdminOfTaskRewardClaim } from "@/lib/telegram/notify-admin-task-claim";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { creditUserWallet } from "@/lib/actions/wallet";
 
 export type { TaskSubmission, UserLevelProgress, TaskSubmissionStatus, LevelStatus } from "@/lib/tasks/types";
 
@@ -69,13 +72,11 @@ export async function getTaskBoard(userId?: string): Promise<TaskBoardData | { e
     return { error: "Daily tasks not set up. Run supabase/daily-tasks.sql in Supabase." };
   }
 
-  const progress = (levelProgress ?? []) as UserLevelProgress[];
+  const rawProgress = (levelProgress ?? []) as UserLevelProgress[];
+  const progress = normalizeLevelProgress(rawProgress);
   const subs = (submissions ?? []) as TaskSubmission[];
 
-  const activeLevel =
-    progress.find((l) => l.status === "active")?.level ??
-    progress.find((l) => l.status === "completed")?.level ??
-    1;
+  const activeLevel = resolveActiveLevel(progress);
 
   const totalPointsEarned = subs
     .filter((s) => s.status === "approved")
@@ -218,6 +219,106 @@ async function tryCompleteLevel(userId: string, level: number) {
     `All tasks approved — claim your $${levelMeta.cashReward} reward to your Bonus wallet.`,
     "success"
   );
+
+  const admin = createAdminClient();
+  if (admin && level < 10) {
+    await admin
+      .from("user_task_levels")
+      .update({ status: "locked" })
+      .eq("user_id", userId)
+      .eq("level", level + 1)
+      .neq("status", "completed");
+  }
+}
+
+async function notifyAdminsInApp(title: string, message: string) {
+  const admin = createAdminClient();
+  if (!admin) return;
+
+  const { data: admins } = await admin.from("profiles").select("id").eq("role", "admin");
+  await Promise.all(
+    (admins ?? []).map((row) =>
+      admin.rpc("create_notification", {
+        p_user_id: row.id,
+        p_title: title,
+        p_message: message,
+        p_type: "info",
+      })
+    )
+  );
+}
+
+async function claimLevelRewardFallback(
+  userId: string,
+  level: number,
+  amount: number,
+  levelName: string,
+  displayName: string
+): Promise<{ success?: boolean; amount?: number; error?: string }> {
+  const admin = createAdminClient();
+  if (!admin) {
+    return {
+      error:
+        "Reward claim is not set up yet. Run supabase/daily-tasks-claim.sql in Supabase SQL Editor.",
+    };
+  }
+
+  const now = new Date().toISOString();
+  const { data: updated, error: updateError } = await admin
+    .from("user_task_levels")
+    .update({ reward_granted: true, reward_claimed_at: now })
+    .eq("user_id", userId)
+    .eq("level", level)
+    .eq("status", "completed")
+    .eq("reward_granted", false)
+    .select("level")
+    .maybeSingle();
+
+  if (updateError) {
+    if (updateError.message.includes("reward_claimed_at")) {
+      return {
+        error: "Run supabase/daily-tasks-claim.sql in Supabase SQL Editor, then try again.",
+      };
+    }
+    return { error: updateError.message };
+  }
+
+  if (!updated) {
+    return { error: "Reward already claimed or level not complete" };
+  }
+
+  const wallet = await creditUserWallet(
+    userId,
+    amount,
+    "bonus",
+    "daily_task",
+    `Level ${level} task reward claimed`
+  );
+
+  if (wallet.error) {
+    await admin
+      .from("user_task_levels")
+      .update({ reward_granted: false, reward_claimed_at: null })
+      .eq("user_id", userId)
+      .eq("level", level);
+    return { error: wallet.error };
+  }
+
+  if (level < 10) {
+    await admin
+      .from("user_task_levels")
+      .update({ status: "locked" })
+      .eq("user_id", userId)
+      .eq("level", level + 1)
+      .neq("status", "completed");
+  }
+
+  await notifyAdminsInApp(
+    "Daily task reward claimed",
+    `${displayName} claimed Level ${level} (${levelName}) — $${amount} to Bonus wallet.`
+  );
+
+  return { success: true, amount };
 }
 
 export async function claimLevelReward(level: number) {
@@ -241,19 +342,49 @@ export async function claimLevelReward(level: number) {
   if (levelRow.status !== "completed") return { error: "Finish all level tasks first" };
   if (levelRow.reward_granted) return { error: "Reward already claimed" };
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name, email")
+    .eq("id", user.id)
+    .single();
+  const displayName =
+    profile?.full_name?.trim() || profile?.email?.split("@")[0] || "Player";
+
+  let amount = levelMeta.cashReward;
+
   const { data: reward, error } = await supabase.rpc("claim_task_reward", {
     p_user_id: user.id,
     p_level: level,
   });
 
   if (error) {
-    if (error.message.includes("claim_task_reward")) {
-      return { error: "Run supabase/daily-tasks-claim.sql in Supabase SQL Editor first." };
-    }
-    return { error: error.message };
-  }
+    const fallback = await claimLevelRewardFallback(
+      user.id,
+      level,
+      amount,
+      levelMeta.name,
+      displayName
+    );
+    if (fallback.error) return { error: fallback.error };
+    amount = fallback.amount ?? amount;
+  } else {
+    amount = Number(reward ?? amount);
 
-  const amount = Number(reward ?? levelMeta.cashReward);
+    if (level < 10) {
+      const admin = createAdminClient();
+      await admin
+        ?.from("user_task_levels")
+        .update({ status: "locked" })
+        .eq("user_id", user.id)
+        .eq("level", level + 1)
+        .neq("status", "completed");
+    }
+
+    await notifyAdminsInApp(
+      "Daily task reward claimed",
+      `${displayName} claimed Level ${level} (${levelMeta.name}) — $${amount} to Bonus wallet.`
+    );
+  }
 
   await createNotification(
     user.id,
@@ -272,6 +403,7 @@ export async function claimLevelReward(level: number) {
   revalidatePath("/dashboard/tasks");
   revalidatePath("/dashboard");
   revalidatePath("/admin/tasks");
+  revalidatePath("/");
   return { success: true, amount };
 }
 

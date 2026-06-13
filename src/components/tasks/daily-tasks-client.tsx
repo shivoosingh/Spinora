@@ -7,6 +7,7 @@ import { TaskCard } from "@/components/tasks/task-card";
 import { TASK_DEFINITIONS, TASK_FAQ, TASK_LEVELS } from "@/lib/tasks/definitions";
 import { getLevelUnlockInfo } from "@/lib/tasks/utils";
 import { claimLevelReward, type TaskBoardData } from "@/lib/actions/daily-tasks";
+import { WALLET_REFRESH_EVENT } from "@/components/wallet/wallet-card-loader";
 import { cn } from "@/lib/utils";
 
 type Tab = "active" | "rewards" | "faq";
@@ -62,14 +63,22 @@ export function DailyTasksClient({ board, onReload }: DailyTasksClientProps) {
 
   async function handleClaim(level: number) {
     setClaiming(true);
-    const result = await claimLevelReward(level);
-    if (result.error) {
-      toast.error(result.error);
-    } else {
+    try {
+      const result = await claimLevelReward(level);
+      if (result.error) {
+        toast.error(result.error);
+        return;
+      }
       toast.success(`$${result.amount} added to your Bonus wallet!`);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event(WALLET_REFRESH_EVENT));
+      }
+      await onReload?.();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not claim reward");
+    } finally {
+      setClaiming(false);
     }
-    setClaiming(false);
-    await onReload?.();
   }
 
   return (
@@ -139,6 +148,7 @@ export function DailyTasksClient({ board, onReload }: DailyTasksClientProps) {
               const isActive = stat?.status === "active";
               const isDone = stat?.status === "completed";
               const isClaimable = isDone && !stat?.reward_granted;
+              const unlockInfoForLevel = getLevelUnlockInfo(lvl.level, board.levelProgress);
               return (
                 <button
                   key={lvl.level}
@@ -154,9 +164,14 @@ export function DailyTasksClient({ board, onReload }: DailyTasksClientProps) {
                 >
                   {isLocked && <Lock className="h-3 w-3" />}
                   L{lvl.level}
-                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />}
+                  {isActive && !isClaimable && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-orange-400" />
+                  )}
                   {isClaimable && <Gift className="h-3 w-3 text-emerald-400" />}
                   {isDone && !isClaimable && <span className="text-emerald-400">✓</span>}
+                  {isLocked && unlockInfoForLevel.waiting && (
+                    <Clock className="h-3 w-3 text-amber-400" />
+                  )}
                 </button>
               );
             })}

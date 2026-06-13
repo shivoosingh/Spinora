@@ -9,6 +9,7 @@ import { useDashboardSession } from "@/lib/dashboard/use-dashboard-session";
 import { TASK_LEVELS } from "@/lib/tasks/definitions";
 import type { TaskBoardData } from "@/lib/actions/daily-tasks";
 import type { TaskSubmission, UserLevelProgress } from "@/lib/tasks/types";
+import { normalizeLevelProgress, resolveActiveLevel } from "@/lib/tasks/level-progress";
 
 export function TasksPageClient() {
   const { supabase, userId, ready } = useDashboardSession();
@@ -45,13 +46,11 @@ export function TasksPageClient() {
       return;
     }
 
-    const progress = (levelProgress ?? []) as UserLevelProgress[];
+    const rawProgress = (levelProgress ?? []) as UserLevelProgress[];
+    const progress = normalizeLevelProgress(rawProgress);
     const subs = (submissions ?? []) as TaskSubmission[];
 
-    const activeLevel =
-      progress.find((l) => l.status === "active")?.level ??
-      progress.find((l) => l.status === "completed")?.level ??
-      1;
+    const activeLevel = resolveActiveLevel(progress);
 
     const totalPointsEarned = subs
       .filter((s) => s.status === "approved")

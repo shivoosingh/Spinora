@@ -95,6 +95,14 @@ BEGIN
   SET reward_granted = true, reward_claimed_at = NOW()
   WHERE user_id = p_user_id AND level = p_level;
 
+  IF p_level < 10 THEN
+    UPDATE public.user_task_levels
+    SET status = 'locked'
+    WHERE user_id = p_user_id
+      AND level = p_level + 1
+      AND status <> 'completed';
+  END IF;
+
   PERFORM set_config('app.wallet_update', 'true', true);
 
   UPDATE public.profiles

@@ -117,15 +117,7 @@ BEGIN
       ELSE user_task_levels.completed_at
     END;
 
-  IF p_status = 'completed' AND p_level < 10 THEN
-    INSERT INTO user_task_levels (user_id, level, status)
-    VALUES (p_user_id, p_level + 1, 'active')
-    ON CONFLICT (user_id, level) DO UPDATE SET
-      status = CASE
-        WHEN user_task_levels.status = 'locked' THEN 'active'
-        ELSE user_task_levels.status
-      END;
-  END IF;
+  -- Next level unlocks only after claim + 24h (see unlock_due_task_levels).
 END;
 $$;
 
