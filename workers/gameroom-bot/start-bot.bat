@@ -24,5 +24,12 @@ if errorlevel 1 (
   exit /b 1
 )
 
-npm start
+echo  Chrome detected on port 9225. Starting bot...
+echo.
+call npm start
+
+echo.
+echo ============================================================
+echo   Bot stopped. Read any error above.
+echo ============================================================
 pause
