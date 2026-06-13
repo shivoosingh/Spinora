@@ -1,4 +1,4 @@
-import { isAutomatedGameSlug } from "@/lib/game-automation/types";
+import { getGameBySlug } from "@/lib/games";
 
 /** Server-only Juwa agent panel URL (never NEXT_PUBLIC) */
 export function getJuwaAdminPanelUrl(): string | null {
@@ -22,25 +22,31 @@ export function getGameVaultAdminPanelUrl(): string | null {
   return process.env.GAMEVAULT_ADMIN_URL?.trim() || "https://agent.gamevault999.com/login";
 }
 
-/**
- * Gameroom agent panel URL. Defaults to the public login page so the feature
- * is enabled without extra config; override with GAMEROOM_ADMIN_URL.
- */
+/** Layui MDI panels (same software family as Gameroom). */
 export function getGameroomAdminPanelUrl(): string | null {
   return process.env.GAMEROOM_ADMIN_URL?.trim() || "https://agentserver1.gameroom777.com/admin/login";
+}
+
+export function getCashMachineAdminPanelUrl(): string | null {
+  return process.env.CASHMACHINE_ADMIN_URL?.trim() || "https://agentserver.cashmachine777.com/admin/login";
+}
+
+export function getMrAllInOneAdminPanelUrl(): string | null {
+  return process.env.MRALLINONE_ADMIN_URL?.trim() || "https://agentserver.mrallinone777.com/admin/login";
 }
 
 export function getAutomationSecret(): string | null {
   return process.env.GAME_AUTOMATION_SECRET?.trim() || null;
 }
 
+/**
+ * Wallet create / load / redeem UI + API — enabled for every game in the catalog
+ * except upcoming (coming soon) titles. Individual bot workers claim jobs by slug;
+ * games without a worker yet can still queue requests until a bot is added.
+ */
 export function isWalletLoadEnabledForGame(slug: string): boolean {
-  if (!isAutomatedGameSlug(slug)) return false;
-  if (slug === "juwa") return Boolean(getJuwaAdminPanelUrl());
-  if (slug === "vegas-sweeps") return Boolean(getVegasAdminPanelUrl());
-  if (slug === "game-vault") return Boolean(getGameVaultAdminPanelUrl());
-  if (slug === "gameroom") return Boolean(getGameroomAdminPanelUrl());
-  return false;
+  const game = getGameBySlug(slug);
+  return Boolean(game && !game.upcoming);
 }
 
 /** Wallet → game load limits (can load any balance ≥ $1 up to available) */

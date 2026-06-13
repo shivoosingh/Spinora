@@ -3,12 +3,12 @@ import { passwordForAccount } from "./credentials.js";
 import { isLoginPage, log, parseMoney, screenshot, waitForManualLogin } from "./panel-utils.js";
 
 /**
- * Gameroom layui admin (agentserver1.gameroom777.com/admin).
+ * MR All In One layui admin (agentserver.mrallinone777.com/admin).
  * Like the manual workflow: stay on /admin, open Game User → User Management,
  * then operate inside the player/index iframe (Add user / Search / Recharge / Withdraw).
  */
 const ADMIN_URL =
-  process.env.GAMEROOM_ADMIN_URL?.trim() || "https://agentserver1.gameroom777.com/admin/login";
+  process.env.MRALLINONE_ADMIN_URL?.trim() || "https://agentserver.mrallinone777.com/admin/login";
 const BASE_URL = ADMIN_URL.replace(/\/login.*$/i, ""); // .../admin
 const ADMIN_HOME = `${BASE_URL}`;
 const PLAYER_URL = `${BASE_URL}/player/index`;
@@ -30,8 +30,8 @@ function playerListFrame(page: Page): Frame | undefined {
 
 function isAdminDashboard(url: string): boolean {
   return (
-    /gameroom777\.com\/admin\/?$/i.test(url) ||
-    (url.includes("gameroom777.com/admin") && !url.includes("/player/") && !url.includes("/login"))
+    /mrallinone777\.com\/admin\/?$/i.test(url) ||
+    (url.includes("mrallinone777.com/admin") && !url.includes("/player/") && !url.includes("/login"))
   );
 }
 
@@ -47,8 +47,8 @@ export async function loginToPanel(page: Page): Promise<void> {
     return;
   }
 
-  const username = process.env.GAMEROOM_AGENT_USERNAME?.trim();
-  const password = process.env.GAMEROOM_AGENT_PASSWORD?.trim();
+  const username = process.env.MRALLINONE_AGENT_USERNAME?.trim();
+  const password = process.env.MRALLINONE_AGENT_PASSWORD?.trim();
   if (username) {
     await page
       .locator('input:not([type="password"]):not([type="hidden"])')
@@ -61,7 +61,7 @@ export async function loginToPanel(page: Page): Promise<void> {
   }
 
   const interactive =
-    process.env.GAMEROOM_HEADLESS === "false" || Boolean(process.env.GAMEROOM_CDP_URL);
+    process.env.MRALLINONE_HEADLESS === "false" || Boolean(process.env.MRALLINONE_CDP_URL);
   if (interactive) {
     await waitForManualLogin(page);
     await getListScope(page);
@@ -71,8 +71,8 @@ export async function loginToPanel(page: Page): Promise<void> {
 
   await screenshot(page, "login-captcha");
   throw new Error(
-    "Gameroom login needs an image CAPTCHA. Run start-chrome-for-bot.bat, log in by hand, " +
-      "then set GAMEROOM_CDP_URL=http://127.0.0.1:9225 and start the bot."
+    "MR All In One login needs an image CAPTCHA. Run start-chrome-for-bot.bat, log in by hand, " +
+      "then set MRALLINONE_CDP_URL=http://127.0.0.1:9227 and start the bot."
   );
 }
 
@@ -81,7 +81,7 @@ export async function loginToPanel(page: Page): Promise<void> {
 async function assertPageOpen(page: Page): Promise<void> {
   if (page.isClosed()) {
     throw new Error(
-      "Gameroom Chrome tab was closed. Keep /admin open in bot Chrome (port 9225) and do not close that window."
+      "MR All In One Chrome tab was closed. Keep /admin open in bot Chrome (port 9227) and do not close that window."
     );
   }
 }
@@ -140,7 +140,7 @@ async function getListScope(page: Page): Promise<ListScope> {
   }
 
   throw new Error(
-    "Could not open User Management. In bot Chrome stay on https://agentserver1.gameroom777.com/admin " +
+    "Could not open User Management. In bot Chrome stay on https://agentserver.mrallinone777.com/admin " +
       "and click Game User → User Management, then retry."
   );
 }
@@ -451,7 +451,7 @@ export async function redeemAccount(
 
 /* ------------------------------------------------------- account creation */
 
-/** Gameroom requires at least $1 initial recharge on the Add user form or creation fails. */
+/** MR All In One requires at least $1 initial recharge on the Add user form or creation fails. */
 const CREATE_INITIAL_BALANCE = "1";
 
 const DUPLICATE_RE = /exist|already|taken|duplicate|repeat|in ?use|have used|used|登录名|重复|已存在/i;

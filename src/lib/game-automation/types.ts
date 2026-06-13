@@ -28,8 +28,15 @@ export interface GameLoadRequest {
   completed_at: string | null;
 }
 
-/** Games that support wallet → bot load automation */
-export const AUTOMATED_GAME_SLUGS = ["juwa", "vegas-sweeps", "game-vault", "gameroom"] as const;
+/** Games with a dedicated bot worker in `workers/*-bot/` */
+export const AUTOMATED_GAME_SLUGS = [
+  "juwa",
+  "vegas-sweeps",
+  "game-vault",
+  "gameroom",
+  "cash-machine",
+  "mr-all-in-one",
+] as const;
 export type AutomatedGameSlug = (typeof AUTOMATED_GAME_SLUGS)[number];
 
 export function isAutomatedGameSlug(slug: string): slug is AutomatedGameSlug {

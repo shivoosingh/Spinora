@@ -77,7 +77,7 @@ export async function runJob(job: GameLoadJob): Promise<BotResult> {
     throw new Error(vpnHint(err));
   } finally {
     // Keep Chrome open when using CDP — don't disconnect mid-session
-    if (!process.env.GAMEROOM_CDP_URL) {
+    if (!process.env.CASHMACHINE_CDP_URL) {
       await close();
     }
   }

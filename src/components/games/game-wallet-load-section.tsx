@@ -35,6 +35,13 @@ interface GameWalletLoadSectionProps {
   game: Game;
 }
 
+/** Layui agent panels (Gameroom family) — stricter username/password rules. */
+const LAYUI_PANEL_SLUGS = ["gameroom", "cash-machine", "mr-all-in-one"] as const;
+
+function isLayuiPanelGame(slug: string): boolean {
+  return (LAYUI_PANEL_SLUGS as readonly string[]).includes(slug);
+}
+
 export function GameWalletLoadSection({ game }: GameWalletLoadSectionProps) {
   const supabase = useMemo(() => createClient(), []);
 
@@ -188,6 +195,23 @@ export function GameWalletLoadSection({ game }: GameWalletLoadSectionProps) {
     }
     if (!/^[a-zA-Z0-9_]+$/.test(username)) {
       toast.error("Username: letters, numbers, and underscores only");
+      return;
+    }
+    if (isLayuiPanelGame(game.slug)) {
+      if (username.length < 6 || username.length > 13) {
+        toast.error("Username must be 6–13 characters for this game");
+        return;
+      }
+      const layuiPassword = password.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+      if (layuiPassword.length < 6 || layuiPassword.length > 13) {
+        toast.error("Password must be 6–13 letters and numbers only (no symbols)");
+        return;
+      }
+      if (!/[a-z]/.test(layuiPassword) || !/[0-9]/.test(layuiPassword)) {
+        toast.error("Password must include both letters and numbers (e.g. player1)");
+        return;
+      }
+      await handleCreateAccount({ username: username.toLowerCase(), password: layuiPassword });
       return;
     }
     if (password.length < 4) {

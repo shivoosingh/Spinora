@@ -1,5 +1,5 @@
 /**
- * Gameroom panel rules:
+ * MR All In One panel rules:
  * - Username: letters, numbers, underscore, 6–13 chars
  * - Password: letters and numbers ONLY (no underscore/symbols), 6–13 chars
  */
@@ -15,7 +15,7 @@ function cleanPassword(raw: string): string {
   return raw.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** Gameroom rejects letter-only or digit-only passwords — must include both. */
+/** MR All In One rejects letter-only or digit-only passwords — must include both. */
 function finalizePassword(raw: string): string {
   let p = cleanPassword(raw);
   if (p.length < MIN_LEN) p = `${p}123456789`.slice(0, MAX_LEN);

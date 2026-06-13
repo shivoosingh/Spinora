@@ -6,16 +6,16 @@ export interface BrowserSession {
   close: () => Promise<void>;
 }
 
-const PANEL_HOST = "gameroom777.com";
+const PANEL_HOST = "cashmachine777.com";
 
 function envOptional(name: string): string | undefined {
   return process.env[name]?.trim() || undefined;
 }
 
 function launchOptions() {
-  const headless = process.env.GAMEROOM_HEADLESS !== "false";
-  const proxy = envOptional("GAMEROOM_PROXY");
-  const browserKind = envOptional("GAMEROOM_BROWSER") ?? "chrome";
+  const headless = process.env.CASHMACHINE_HEADLESS !== "false";
+  const proxy = envOptional("CASHMACHINE_PROXY");
+  const browserKind = envOptional("CASHMACHINE_BROWSER") ?? "chrome";
 
   return {
     headless,
@@ -37,14 +37,14 @@ async function findPanelPage(pages: Page[]): Promise<Page> {
     );
   });
   if (dashboard) {
-    console.log("[gr] Using tab:", dashboard.url());
+    console.log("[cm] Using tab:", dashboard.url());
     await dashboard.bringToFront();
     return dashboard;
   }
 
   const playerList = pages.find((p) => /player\/index/i.test(p.url()));
   if (playerList) {
-    console.log("[gr] Using tab:", playerList.url());
+    console.log("[cm] Using tab:", playerList.url());
     await playerList.bringToFront();
     return playerList;
   }
@@ -52,7 +52,7 @@ async function findPanelPage(pages: Page[]): Promise<Page> {
   for (const page of pages) {
     const url = page.url();
     if (url.includes(PANEL_HOST) && !url.includes("about:")) {
-      console.log("[gr] Using tab:", url);
+      console.log("[cm] Using tab:", url);
       await page.bringToFront();
       return page;
     }
@@ -60,8 +60,8 @@ async function findPanelPage(pages: Page[]): Promise<Page> {
 
   for (const page of pages) {
     const title = await page.title().catch(() => "");
-    if (/backend|management|gameroom/i.test(title)) {
-      console.log("[gr] Using tab by title:", title);
+    if (/backend|management|cashmachine/i.test(title)) {
+      console.log("[cm] Using tab by title:", title);
       await page.bringToFront();
       return page;
     }
@@ -71,23 +71,23 @@ async function findPanelPage(pages: Page[]): Promise<Page> {
     (p) => !p.url().includes("about:blank") && !p.url().startsWith("chrome-extension:")
   );
   if (fallback) {
-    console.log("[gr] Using first non-blank tab:", fallback.url());
+    console.log("[cm] Using first non-blank tab:", fallback.url());
     await fallback.bringToFront();
     return fallback;
   }
 
   throw new Error(
-    "No Gameroom tab found in Chrome. Open the agent panel (agentserver1.gameroom777.com) in the bot Chrome, then retry."
+    "No Cash Machine tab found in Chrome. Open the agent panel (agentserver.cashmachine777.com) in the bot Chrome, then retry."
   );
 }
 
 export async function openBrowserSession(): Promise<BrowserSession> {
-  const cdpUrl = envOptional("GAMEROOM_CDP_URL");
+  const cdpUrl = envOptional("CASHMACHINE_CDP_URL");
   const profileDir =
-    envOptional("GAMEROOM_CHROME_PROFILE_DIR") ?? join(process.cwd(), "chrome-bot-profile");
+    envOptional("CASHMACHINE_CHROME_PROFILE_DIR") ?? join(process.cwd(), "chrome-bot-profile");
 
   if (cdpUrl) {
-    console.log("[gr] Connecting to your Chrome via CDP (VPN should already be on)…");
+    console.log("[cm] Connecting to your Chrome via CDP (VPN should already be on)…");
     try {
       const browser = await chromium.connectOverCDP(cdpUrl, { slowMo: 100 });
       const context = browser.contexts()[0] ?? (await browser.newContext());
@@ -100,14 +100,14 @@ export async function openBrowserSession(): Promise<BrowserSession> {
         },
       };
     } catch (err) {
-      if (err instanceof Error && err.message.includes("No Gameroom tab")) throw err;
+      if (err instanceof Error && err.message.includes("No Cash Machine tab")) throw err;
       throw new Error(
         "Could not connect to Chrome over CDP. Run start-chrome-for-bot.bat first, connect VPN, then start the bot."
       );
     }
   }
 
-  console.log("[gr] Launching Google Chrome with bot profile…");
+  console.log("[cm] Launching Google Chrome with bot profile…");
   const context = await chromium.launchPersistentContext(profileDir, {
     ...launchOptions(),
     viewport: { width: 1366, height: 900 },
@@ -133,7 +133,7 @@ export function vpnHint(error: unknown): string {
   ) {
     return (
       `${msg}\n\n` +
-      "Keep the Gameroom User Management tab open in the bot Chrome (port 9225). Do not close that Chrome window while the bot is running."
+      "Keep the Cash Machine User Management tab open in the bot Chrome (port 9226). Do not close that Chrome window while the bot is running."
     );
   }
   if (
