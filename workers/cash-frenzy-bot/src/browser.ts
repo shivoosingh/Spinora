@@ -35,31 +35,23 @@ async function isUsablePanelPage(page: Page): Promise<boolean> {
   const body = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
   if (/404\s*not\s*found/i.test(body) && body.length < 200) return false;
 
-  return /backend/i.test(body) && /new account/i.test(body) && /user list/i.test(body);
+  return /backend/i.test(body) || /new account/i.test(body);
 }
 
 async function findPanelPage(pages: Page[]): Promise<Page> {
   for (const page of pages) {
     if (!(await isUsablePanelPage(page))) continue;
-    try {
-      const ready = await page.evaluate(() => {
-        const t = document.body?.innerText ?? "";
-        return /new account/i.test(t) && /register date/i.test(t);
-      });
-      if (ready) {
-        console.log("[cf] Using tab:", page.url());
-        await page.bringToFront();
-        return page;
-      }
-    } catch {
-      /* try next tab */
+    await page.bringToFront().catch(() => {});
+    if (await page.locator(".el-button, button").filter({ hasText: /new account/i }).first().isVisible().catch(() => false)) {
+      console.log("[cf] Using tab:", page.url());
+      return page;
     }
   }
 
   for (const page of pages) {
     if (await isUsablePanelPage(page)) {
       console.log("[cf] Using tab:", page.url());
-      await page.bringToFront();
+      await page.bringToFront().catch(() => {});
       return page;
     }
   }

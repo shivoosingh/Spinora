@@ -9,7 +9,9 @@ const ADMIN_HOME = `${BASE_URL}`;
 /* ------------------------------------------------------------------ login */
 
 export async function loginToPanel(page: Page): Promise<void> {
-  if (!(await isLoginPage(page)) && (await isUserListReady(page))) {
+  await page.bringToFront().catch(() => {});
+
+  if (!(await isLoginPage(page)) && (await hasNewAccountButton(page, 3000))) {
     log("login", "already on User List");
     return;
   }
@@ -92,22 +94,54 @@ async function clickDialogButton(dlg: Locator, pattern: RegExp): Promise<void> {
 
 /* ----------------------------------------------------------- user listing */
 
-async function isUserListReady(page: Page): Promise<boolean> {
+function newAccountButton(page: Page): Locator {
+  return page.locator("button.el-button, .el-button, button").filter({ hasText: /new account/i }).first();
+}
+
+async function hasNewAccountButton(page: Page, timeoutMs = 3000): Promise<boolean> {
+  await page.bringToFront().catch(() => {});
+  if (
+    await page
+      .locator(".el-button, button")
+      .filter({ hasText: /new account/i })
+      .first()
+      .isVisible()
+      .catch(() => false)
+  ) {
+    return true;
+  }
   try {
     return await page.evaluate(() => {
-      const t = (document.body?.innerText ?? "").replace(/\s+/g, " ");
-      if (!/backend/i.test(t)) return false;
-      const hasNewAccount = /new account/i.test(t);
-      const hasTable = /register date/i.test(t) || (/^account$/im.test(t) && /balance/i.test(t));
-      const hasSearch =
-        /search by account/i.test(t) ||
-        /please enter your search/i.test(t) ||
-        /search content/i.test(t);
-      return hasNewAccount && hasTable && hasSearch;
+      return [...document.querySelectorAll("button, .el-button, a")].some((el) =>
+        /new account/i.test(el.textContent ?? "")
+      );
     });
   } catch {
     return false;
   }
+}
+
+async function clickNewAccount(page: Page): Promise<void> {
+  await page.bringToFront().catch(() => {});
+  const btn = newAccountButton(page);
+  if (await btn.isVisible().catch(() => false)) {
+    await btn.scrollIntoViewIfNeeded().catch(() => {});
+    await btn.click({ force: true });
+    return;
+  }
+  const clicked = await page.evaluate(() => {
+    const els = [...document.querySelectorAll("button, .el-button, a")];
+    const target = els.find((el) => /new account/i.test(el.textContent ?? ""));
+    if (!target) return false;
+    (target as HTMLElement).click();
+    return true;
+  });
+  if (!clicked) throw new Error("New Account button not found on page");
+  log("create", "clicked New Account via DOM");
+}
+
+async function isUserListReady(page: Page): Promise<boolean> {
+  return hasNewAccountButton(page, 1500);
 }
 
 async function pageLooksLike404(page: Page): Promise<boolean> {
@@ -138,8 +172,20 @@ async function clickSidebarUserList(page: Page): Promise<void> {
  * Cash Frenzy is a SPA on /admin only — never open /admin/userList or /admin/userManagement (both 404).
  */
 async function ensureUserList(page: Page): Promise<void> {
+  await page.bringToFront().catch(() => {});
+  await page.waitForTimeout(400);
   await closeOverlays(page);
-  if (await isUserListReady(page)) return;
+  if (await hasNewAccountButton(page, 5000)) {
+    log("nav", "User List ready");
+    return;
+  }
+
+  // CDP-connected Chrome sometimes hides buttons from Playwright visibility — wait and retry.
+  await page.waitForTimeout(2000);
+  if (await hasNewAccountButton(page, 3000)) {
+    log("nav", "User List ready (after wait)");
+    return;
+  }
 
   if (await pageLooksLike404(page)) {
     log("nav", "404 tab — returning to /admin");
@@ -151,11 +197,20 @@ async function ensureUserList(page: Page): Promise<void> {
     await clickSidebarUserList(page);
   }
 
-  if (await isUserListReady(page)) return;
+  if (await hasNewAccountButton(page, 12000)) {
+    log("nav", "User List ready after sidebar click");
+    return;
+  }
+
+  // Operator keeps User List open on /admin — CDP visibility can lie; don't block the job.
+  if (/cashfrenzy777\.com\/admin/i.test(page.url()) && !(await isLoginPage(page))) {
+    log("nav", "on /admin logged in — continuing");
+    return;
+  }
 
   await screenshot(page, "user-list-nav-failed");
   throw new Error(
-    "Could not see User List on /admin. In bot Chrome open User List in the sidebar (stay on /admin — do not open /admin/userList), then retry."
+    "Could not see the New Account button on /admin. Open User List in the sidebar, then retry."
   );
 }
 
@@ -331,7 +386,7 @@ type CreateOutcome =
 
 async function tryCreateOnce(page: Page, username: string, password: string): Promise<CreateOutcome> {
   await ensureUserList(page);
-  await page.locator("button, .el-button").filter({ hasText: /new account/i }).first().click();
+  await clickNewAccount(page);
   await page.waitForTimeout(1000);
 
   const dlg = visibleDialog(page);
@@ -345,7 +400,7 @@ async function tryCreateOnce(page: Page, username: string, password: string): Pr
   await typeInto(passInputs.nth(1), password);
 
   await clickDialogButton(dlg, /^\s*save\s*$/i);
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(2000);
 
   const messages = await readPanelMessages(page);
 
