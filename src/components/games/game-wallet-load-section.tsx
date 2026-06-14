@@ -23,10 +23,12 @@ import {
   requestGameCheckBalance,
   getMyGameLoads,
   getMyGameAccount,
+  getDepositRolloverForGame,
   healStaleGameLoads,
   cancelMyGameLoad,
 } from "@/lib/actions/game-loads";
 import type { Game } from "@/lib/games";
+import { GAME_BONUS_RULES } from "@/lib/games";
 import type { GameLoadRequest } from "@/lib/game-automation/types";
 import { isAutomatedGameSlug, AUTOMATED_BOT_WORKER_DIR } from "@/lib/game-automation/types";
 import { isGameAccountCreateLoadType } from "@/lib/game-automation/account-create";
@@ -41,6 +43,7 @@ import {
 import { previewJuwaUsername } from "@/lib/game-automation/juwa-credentials";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
+import type { DepositRolloverBounds } from "@/lib/wallet/deposit-redeem-rollover";
 import { WALLET_REFRESH_EVENT } from "@/lib/wallet/use-live-wallet";
 
 interface GameWalletLoadSectionProps {
@@ -75,6 +78,7 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
   } | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [depositRollover, setDepositRollover] = useState<DepositRolloverBounds | null>(null);
   const failedToastRef = useRef<string | null>(null);
   const pendingLoadIdsRef = useRef<Set<string>>(new Set());
 
@@ -230,6 +234,10 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
     }
   }, [walletType, walletBalance, bonusBalance]);
 
+  useEffect(() => {
+    void getDepositRolloverForGame(game.slug).then((stats) => setDepositRollover(stats));
+  }, [game.slug, recentLoads]);
+
   const available = walletType === "current" ? walletBalance : bonusBalance;
   const parsedAmount = parseFloat(amount) || 0;
   const previewStem = previewJuwaUsername(requesterName, requesterEmail);
@@ -251,6 +259,20 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
   );
   const lastKnownBalance = lastBalanceCheck ? Number(lastBalanceCheck.amount) : null;
   const parsedRedeemAmount = parseFloat(redeemAmount) || 0;
+
+  const depositRedeemRulesActive =
+    redeemWalletType === "current" &&
+    depositRollover !== null &&
+    depositRollover.totalDepositLoads > 0;
+
+  const redeemMaxAllowed = depositRedeemRulesActive
+    ? Math.min(WALLET_LOAD_LIMITS.max, depositRollover.maxRedeemRemaining)
+    : WALLET_LOAD_LIMITS.max;
+
+  const depositRedeemBlocked =
+    depositRedeemRulesActive &&
+    lastKnownBalance !== null &&
+    lastKnownBalance < depositRollover.minGameBalance;
 
   async function copyText(text: string, label: string) {
     await navigator.clipboard.writeText(text);
@@ -415,9 +437,30 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
       toast.error("Create your account first");
       return;
     }
+
+    if (depositRedeemRulesActive && depositRollover) {
+      if (depositRollover.maxRedeemRemaining <= 0) {
+        toast.error("You have reached the 8x redeem limit for your deposit loads.");
+        return;
+      }
+      if (lastKnownBalance === null && !pendingCheck) {
+        toast.error(
+          `Check your live game balance first — you need at least $${depositRollover.minGameBalance.toFixed(2)} in game (${GAME_BONUS_RULES.redeemMin}x deposit loads) to redeem.`
+        );
+        return;
+      }
+      if (depositRedeemBlocked) {
+        toast.error(
+          `Need at least $${depositRollover.minGameBalance.toFixed(2)} in game (${GAME_BONUS_RULES.redeemMin}x your $${depositRollover.totalDepositLoads.toFixed(2)} deposit loads). Last checked: $${lastKnownBalance!.toFixed(2)}.`
+        );
+        return;
+      }
+    }
+
     if (!redeemAll) {
-      if (parsedRedeemAmount < WALLET_LOAD_LIMITS.min || parsedRedeemAmount > WALLET_LOAD_LIMITS.max) {
-        toast.error(`Enter $${WALLET_LOAD_LIMITS.min}–$${WALLET_LOAD_LIMITS.max}`);
+      const maxPartial = depositRedeemRulesActive ? redeemMaxAllowed : WALLET_LOAD_LIMITS.max;
+      if (parsedRedeemAmount < WALLET_LOAD_LIMITS.min || parsedRedeemAmount > maxPartial) {
+        toast.error(`Enter $${WALLET_LOAD_LIMITS.min}–$${maxPartial.toFixed(2)}`);
         return;
       }
     }
@@ -818,6 +861,37 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
               ))}
             </div>
 
+            {depositRedeemRulesActive && depositRollover && (
+              <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90 space-y-1">
+                <p className="font-semibold text-amber-200">Deposit redeem rollover</p>
+                <p>
+                  Loaded ${depositRollover.totalDepositLoads.toFixed(2)} from Total Deposit → need{" "}
+                  <span className="font-semibold">${depositRollover.minGameBalance.toFixed(2)}</span>{" "}
+                  in game to redeem ({GAME_BONUS_RULES.redeemMin}x min), up to{" "}
+                  <span className="font-semibold">${depositRollover.maxRedeemRemaining.toFixed(2)}</span>{" "}
+                  remaining ({GAME_BONUS_RULES.redeemMax}x max).
+                </p>
+                {lastKnownBalance !== null ? (
+                  <p>
+                    Last checked balance:{" "}
+                    <span
+                      className={cn(
+                        "font-semibold",
+                        depositRedeemBlocked ? "text-red-300" : "text-emerald-300"
+                      )}
+                    >
+                      ${lastKnownBalance.toFixed(2)}
+                    </span>
+                    {depositRedeemBlocked ? " — play more before redeeming." : " — eligible to redeem."}
+                  </p>
+                ) : (
+                  <p className="text-amber-200/80">
+                    Use Check Balance below to see your live game balance before redeeming.
+                  </p>
+                )}
+              </div>
+            )}
+
             <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
               <input
                 type="checkbox"
@@ -836,7 +910,7 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
                   <input
                     type="number"
                     min={WALLET_LOAD_LIMITS.min}
-                    max={WALLET_LOAD_LIMITS.max}
+                    max={redeemMaxAllowed}
                     step="0.01"
                     value={redeemAmount}
                     onChange={(e) => setRedeemAmount(e.target.value)}
@@ -847,7 +921,13 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
                 <button
                   type="button"
                   onClick={handleRedeem}
-                  disabled={redeeming || pendingRedeem || !savedAccount}
+                  disabled={
+                    redeeming ||
+                    pendingRedeem ||
+                    !savedAccount ||
+                    depositRedeemBlocked ||
+                    (depositRedeemRulesActive && depositRollover!.maxRedeemRemaining <= 0)
+                  }
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-5 py-3 text-sm font-bold text-black disabled:opacity-50"
                 >
                   {redeeming || pendingRedeem ? (
@@ -864,7 +944,13 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
               <button
                 type="button"
                 onClick={handleRedeem}
-                disabled={redeeming || pendingRedeem || !savedAccount}
+                disabled={
+                  redeeming ||
+                  pendingRedeem ||
+                  !savedAccount ||
+                  depositRedeemBlocked ||
+                  (depositRedeemRulesActive && depositRollover!.maxRedeemRemaining <= 0)
+                }
                 className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-5 py-3 text-sm font-bold text-black disabled:opacity-50"
               >
                 {redeeming || pendingRedeem ? (

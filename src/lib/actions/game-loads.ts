@@ -8,6 +8,11 @@ import { notifyAdminOfWalletActivity } from "@/lib/telegram/notify-admin-wallet-
 import { getJuwaAdminPanelUrl, getVegasAdminPanelUrl, getGameVaultAdminPanelUrl, getCashFrenzyAdminPanelUrl, isWalletLoadEnabledForGame, WALLET_LOAD_LIMITS } from "@/lib/game-automation/config";
 import { ensureGameAccountUsername, maxUsernameLenForGame } from "@/lib/game-automation/account-username";
 import type { GameLoadWalletType } from "@/lib/game-automation/types";
+import {
+  depositRolloverBounds,
+  DEPOSIT_LOAD_TYPES,
+  type DepositRolloverBounds,
+} from "@/lib/wallet/deposit-redeem-rollover";
 
 export async function requestGameAccountCreate(input: {
   gameSlug: string;
@@ -271,6 +276,42 @@ export async function requestGameRedeem(input: {
     return { error: "Create your game account first." };
   }
 
+  const walletType = input.walletType ?? "current";
+
+  if (walletType === "current") {
+    const rollover = await fetchDepositRolloverTotalsForUser(supabase, user.id, input.gameSlug);
+    const bounds = depositRolloverBounds(rollover);
+
+    if (bounds.totalDepositLoads > 0) {
+      const lastBalance = await fetchLastGameBalanceForUser(supabase, user.id, input.gameSlug);
+
+      if (lastBalance === null) {
+        return {
+          error: `Check your live game balance first — you need at least $${bounds.minGameBalance.toFixed(2)} in game (3x your $${bounds.totalDepositLoads.toFixed(2)} deposit loads) to redeem.`,
+        };
+      }
+
+      if (lastBalance < bounds.minGameBalance) {
+        return {
+          error: `Need at least $${bounds.minGameBalance.toFixed(2)} in game (3x your $${bounds.totalDepositLoads.toFixed(2)} deposit loads). Last checked: $${lastBalance.toFixed(2)}.`,
+        };
+      }
+
+      if (bounds.maxRedeemRemaining <= 0) {
+        return { error: "You have reached the 8x redeem limit for your deposit loads." };
+      }
+
+      if (!redeemAll) {
+        const amount = Math.round((input.amount ?? 0) * 100) / 100;
+        if (amount > bounds.maxRedeemRemaining) {
+          return {
+            error: `Maximum redeem is $${bounds.maxRedeemRemaining.toFixed(2)} (8x deposit loads minus prior redeems).`,
+          };
+        }
+      }
+    }
+  }
+
   const { data: pending } = await supabase
     .from("game_load_requests")
     .select("id")
@@ -289,12 +330,14 @@ export async function requestGameRedeem(input: {
     p_amount: redeemAll ? 0 : input.amount,
     p_game_username: input.gameUsername.trim(),
     p_redeem_all: redeemAll,
-    p_wallet_type: input.walletType ?? "current",
+    p_wallet_type: walletType,
   });
 
   if (error) {
     if (error.message.includes("request_game_redeem")) {
-      return { error: "Run supabase/game-load-redeem.sql in Supabase SQL Editor first." };
+      return {
+        error: "Run supabase/deposit-redeem-rollover.sql in Supabase SQL Editor first.",
+      };
     }
     return { error: error.message };
   }
@@ -309,12 +352,91 @@ export async function requestGameRedeem(input: {
     gameSlug: input.gameSlug,
     kind: "redeem",
     amount: redeemAll ? null : input.amount,
-    walletType: input.walletType ?? "current",
+    walletType,
     redeemAll,
     requestId: requestId as string,
   });
 
   return { success: true, requestId: requestId as string };
+}
+
+async function fetchDepositRolloverTotalsForUser(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  gameSlug: string
+) {
+  const { data, error } = await supabase.rpc("get_deposit_rollover_totals", {
+    p_user_id: userId,
+    p_game_slug: gameSlug,
+  });
+
+  if (!error && data?.length) {
+    const row = data[0] as { total_loads: number; total_redeemed: number };
+    return {
+      totalDepositLoads: Number(row.total_loads ?? 0),
+      totalDepositRedeemed: Number(row.total_redeemed ?? 0),
+    };
+  }
+
+  const [{ data: loads }, { data: redeems }] = await Promise.all([
+    supabase
+      .from("game_load_requests")
+      .select("amount")
+      .eq("user_id", userId)
+      .eq("game_slug", gameSlug)
+      .eq("wallet_type", "current")
+      .in("load_type", [...DEPOSIT_LOAD_TYPES])
+      .eq("status", "completed"),
+    supabase
+      .from("game_load_requests")
+      .select("amount")
+      .eq("user_id", userId)
+      .eq("game_slug", gameSlug)
+      .eq("wallet_type", "current")
+      .eq("load_type", "redeem")
+      .eq("status", "completed"),
+  ]);
+
+  const sum = (rows: { amount: number }[] | null) =>
+    Math.round((rows ?? []).reduce((acc, row) => acc + Number(row.amount ?? 0), 0) * 100) / 100;
+
+  return {
+    totalDepositLoads: sum(loads),
+    totalDepositRedeemed: sum(redeems),
+  };
+}
+
+async function fetchLastGameBalanceForUser(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  gameSlug: string
+): Promise<number | null> {
+  const { data } = await supabase
+    .from("game_load_requests")
+    .select("amount")
+    .eq("user_id", userId)
+    .eq("game_slug", gameSlug)
+    .eq("load_type", "check_balance")
+    .eq("status", "completed")
+    .order("completed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!data) return null;
+  return Math.round(Number(data.amount ?? 0) * 100) / 100;
+}
+
+export async function getDepositRolloverForGame(
+  gameSlug: string
+): Promise<DepositRolloverBounds | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const totals = await fetchDepositRolloverTotalsForUser(supabase, user.id, gameSlug);
+  return depositRolloverBounds(totals);
 }
 
 export async function getMyGameLoads(gameSlug?: string) {

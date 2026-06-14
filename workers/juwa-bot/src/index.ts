@@ -49,7 +49,7 @@ async function processOne(supabase: ReturnType<typeof createAdminSupabase>) {
   const enrichedJob = await enrichGameLoadJob(supabase, job as GameLoadJob);
 
   try {
-    const result = await runJuwaJob(enrichedJob);
+    const result = await runJuwaJob(enrichedJob, supabase);
     await complete(supabase, job.id, true, {
       ...result,
       redeemedAmount: result.redeemedAmount ?? result.balance,

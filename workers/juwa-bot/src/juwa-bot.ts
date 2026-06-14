@@ -1,7 +1,9 @@
 import type { Page } from "playwright";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GameLoadJob, JuwaBotResult } from "./types.js";
 import { planCreateAccount, variantFromPlan } from "../../shared/numbered-credentials.js";
 import { CREATE_ACCOUNT_MAX_ATTEMPTS } from "../../shared/panel-create.js";
+import { resolveDepositRedeemForJob } from "../../shared/deposit-redeem-guard.js";
 import { openBrowserSession, vpnHint } from "./browser.js";
 import {
   goToUserManagement,
@@ -158,21 +160,22 @@ async function rechargeUser(page: Page, username: string, amount: number) {
 
 async function redeemUser(
   page: Page,
-  job: GameLoadJob
+  job: GameLoadJob,
+  supabase: SupabaseClient
 ): Promise<{ username: string; redeemedAmount: number }> {
   const username = job.game_username?.trim();
   if (!username) throw new Error("Redeem requires game username");
 
-  const redeemAll = Boolean((job as GameLoadJob & { redeem_all?: boolean }).redeem_all);
-  const amount = redeemAll ? "all" : Number(job.amount);
-  log("redeem", `${username} ${redeemAll ? "all" : `$${amount}`}`);
+  const balance = await readUserGameBalanceForCheck(page, username);
+  const amount = await resolveDepositRedeemForJob(supabase, job, balance);
+  log("redeem", `${username} $${amount}`);
 
   const redeemedAmount = await redeemAccount(page, username, amount);
   await screenshot(page, "07-after-redeem");
   return { username, redeemedAmount };
 }
 
-export async function runJuwaJob(job: GameLoadJob): Promise<JuwaBotResult> {
+export async function runJuwaJob(job: GameLoadJob, supabase: SupabaseClient): Promise<JuwaBotResult> {
   const session = await openBrowserSession();
   const { page, close } = session;
 
@@ -192,7 +195,7 @@ export async function runJuwaJob(job: GameLoadJob): Promise<JuwaBotResult> {
     }
 
     if (job.load_type === "redeem") {
-      const result = await redeemUser(page, job);
+      const result = await redeemUser(page, job, supabase);
       return { username: result.username, redeemedAmount: result.redeemedAmount };
     }
 

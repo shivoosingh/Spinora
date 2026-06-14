@@ -1,5 +1,7 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GameLoadJob, BotResult } from "./types.js";
 import { planCreateAccount, variantFromPlan } from "../../shared/numbered-credentials.js";
+import { resolveDepositRedeemForJob } from "../../shared/deposit-redeem-guard.js";
 import { openBrowserSession, vpnHint } from "./browser.js";
 import {
   loginToPanel,
@@ -10,7 +12,7 @@ import {
 } from "./panel.js";
 import { log, screenshot } from "./panel-utils.js";
 
-export async function runJob(job: GameLoadJob): Promise<BotResult> {
+export async function runJob(job: GameLoadJob, supabase: SupabaseClient): Promise<BotResult> {
   const session = await openBrowserSession();
   const { page, close } = session;
 
@@ -43,12 +45,9 @@ export async function runJob(job: GameLoadJob): Promise<BotResult> {
     if (job.load_type === "redeem") {
       const username = job.game_username?.trim();
       if (!username) throw new Error("Redeem requires game username");
-      const redeemedAmount = await redeemAccount(
-        page,
-        username,
-        Number(job.amount),
-        Boolean(job.redeem_all)
-      );
+      const balance = await readBalance(page, username);
+      const amount = await resolveDepositRedeemForJob(supabase, job, balance);
+      const redeemedAmount = await redeemAccount(page, username, amount, false);
       return { username, redeemedAmount };
     }
 
