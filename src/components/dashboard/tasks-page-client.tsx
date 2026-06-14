@@ -57,7 +57,7 @@ export function TasksPageClient() {
       .filter((s) => s.status === "approved")
       .reduce((sum, s) => sum + s.points_awarded, 0);
 
-    const { totalCashEarned, availableCashBalance } = computeTaskCashBalances(progress);
+    const { totalCashEarned, availableCashBalance } = computeTaskCashBalances(progress, subs);
 
     setBoard({
       levels: TASK_LEVELS,

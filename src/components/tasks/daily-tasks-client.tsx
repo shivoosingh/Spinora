@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { TaskCard } from "@/components/tasks/task-card";
 import { TASK_DEFINITIONS, TASK_FAQ, TASK_LEVELS } from "@/lib/tasks/definitions";
 import { getLevelUnlockInfo } from "@/lib/tasks/utils";
+import { isLevelReadyToClaim } from "@/lib/tasks/level-progress";
 import { claimLevelReward, type TaskBoardData } from "@/lib/actions/daily-tasks";
 import { WALLET_REFRESH_EVENT } from "@/lib/wallet/use-live-wallet";
 import { cn } from "@/lib/utils";
@@ -53,13 +54,16 @@ export function DailyTasksClient({ board, onReload }: DailyTasksClientProps) {
     (p) => p.status === "completed" && p.reward_granted
   );
 
-  const canClaim = levelStat?.status === "completed" && !levelStat?.reward_granted;
+  const canClaim =
+    levelStat &&
+    !levelStat.reward_granted &&
+    isLevelReadyToClaim(selectedLevel, board.levelProgress, board.submissions);
   const unlockInfo = getLevelUnlockInfo(selectedLevel, board.levelProgress);
 
   // Lowest level whose tasks are all approved but the reward isn't claimed yet.
   const claimableLevel = [...board.levelProgress]
     .sort((a, b) => a.level - b.level)
-    .find((p) => p.status === "completed" && !p.reward_granted);
+    .find((p) => isLevelReadyToClaim(p.level, board.levelProgress, board.submissions));
   const claimableMeta = claimableLevel
     ? TASK_LEVELS.find((l) => l.level === claimableLevel.level)
     : undefined;
@@ -178,8 +182,10 @@ export function DailyTasksClient({ board, onReload }: DailyTasksClientProps) {
               const stat = board.levelProgress.find((p) => p.level === lvl.level);
               const isLocked = stat?.status === "locked";
               const isActive = stat?.status === "active";
-              const isDone = stat?.status === "completed";
-              const isClaimable = isDone && !stat?.reward_granted;
+              const isDone = stat?.status === "completed" && stat?.reward_granted;
+              const isClaimable = stat
+                ? isLevelReadyToClaim(lvl.level, board.levelProgress, board.submissions)
+                : false;
               const unlockInfoForLevel = getLevelUnlockInfo(lvl.level, board.levelProgress);
               return (
                 <button

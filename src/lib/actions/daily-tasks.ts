@@ -7,11 +7,10 @@ import { isTaskUnlocked as checkTaskUnlocked } from "@/lib/tasks/utils";
 import {
   TASK_LEVELS,
   getTaskById,
-  getTasksForLevel,
   type TaskLevelMeta,
 } from "@/lib/tasks/definitions";
 import type { TaskSubmission, UserLevelProgress } from "@/lib/tasks/types";
-import { normalizeLevelProgress, resolveActiveLevel, computeTaskCashBalances, inferLevelCompletionFromSubmissions } from "@/lib/tasks/level-progress";
+import { normalizeLevelProgress, resolveActiveLevel, computeTaskCashBalances, inferLevelCompletionFromSubmissions, getLevelApprovalState } from "@/lib/tasks/level-progress";
 import { notifyAdminOfTaskSubmission } from "@/lib/telegram/notify-admin-task-submission";
 import { notifyAdminOfTaskRewardClaim } from "@/lib/telegram/notify-admin-task-claim";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -85,7 +84,7 @@ export async function getTaskBoard(userId?: string): Promise<TaskBoardData | { e
     .filter((s) => s.status === "approved")
     .reduce((sum, s) => sum + s.points_awarded, 0);
 
-  const { totalCashEarned, availableCashBalance } = computeTaskCashBalances(progress);
+  const { totalCashEarned, availableCashBalance } = computeTaskCashBalances(progress, subs);
 
   return {
     levels: TASK_LEVELS,
@@ -179,20 +178,15 @@ async function syncLevelCompletionIfReady(userId: string, level: number): Promis
   const levelMeta = TASK_LEVELS.find((l) => l.level === level);
   if (!levelMeta) return false;
 
-  const levelTasks = getTasksForLevel(level);
   const { data: subs } = await supabase
     .from("user_task_submissions")
     .select("*")
     .eq("user_id", userId)
-    .eq("level", level)
-    .eq("status", "approved");
+    .eq("level", level);
 
-  const approved = (subs ?? []) as TaskSubmission[];
-  const approvedIds = new Set(approved.map((s) => s.task_id));
-  const allDone = levelTasks.every((t) => approvedIds.has(t.id));
-  const points = approved.reduce((sum, s) => sum + s.points_awarded, 0);
-
-  if (!allDone || points < levelMeta.pointsRequired) return false;
+  const submissions = (subs ?? []) as TaskSubmission[];
+  const approval = getLevelApprovalState(level, submissions);
+  if (!approval.readyToClaim) return false;
 
   const { data: levelRow } = await supabase
     .from("user_task_levels")
@@ -206,7 +200,7 @@ async function syncLevelCompletionIfReady(userId: string, level: number): Promis
   await supabase.rpc("upsert_user_task_level", {
     p_user_id: userId,
     p_level: level,
-    p_points: points,
+    p_points: approval.pointsApproved,
     p_status: "completed",
     p_reward_granted: false,
   });
@@ -273,20 +267,15 @@ async function tryCompleteLevel(userId: string, level: number) {
   const levelMeta = TASK_LEVELS.find((l) => l.level === level);
   if (!levelMeta) return;
 
-  const levelTasks = getTasksForLevel(level);
   const { data: subs } = await supabase
     .from("user_task_submissions")
     .select("*")
     .eq("user_id", userId)
-    .eq("level", level)
-    .eq("status", "approved");
+    .eq("level", level);
 
-  const approved = (subs ?? []) as TaskSubmission[];
-  const approvedIds = new Set(approved.map((s) => s.task_id));
-  const allDone = levelTasks.every((t) => approvedIds.has(t.id));
-  const points = approved.reduce((sum, s) => sum + s.points_awarded, 0);
-
-  if (!allDone || points < levelMeta.pointsRequired) return;
+  const submissions = (subs ?? []) as TaskSubmission[];
+  const approval = getLevelApprovalState(level, submissions);
+  if (!approval.readyToClaim) return;
 
   const { data: levelRow } = await supabase
     .from("user_task_levels")
@@ -301,7 +290,7 @@ async function tryCompleteLevel(userId: string, level: number) {
   await supabase.rpc("upsert_user_task_level", {
     p_user_id: userId,
     p_level: level,
-    p_points: points,
+    p_points: approval.pointsApproved,
     p_status: "completed",
     p_reward_granted: false,
   });
@@ -427,6 +416,24 @@ export async function claimLevelReward(level: number) {
 
   const levelMeta = TASK_LEVELS.find((l) => l.level === level);
   if (!levelMeta) return { error: "Invalid level" };
+
+  const { data: subs } = await supabase
+    .from("user_task_submissions")
+    .select("*")
+    .eq("user_id", user.id)
+    .eq("level", level);
+
+  const approval = getLevelApprovalState(level, (subs ?? []) as TaskSubmission[]);
+  if (!approval.readyToClaim) {
+    if (approval.pendingCount > 0) {
+      return {
+        error: `${approval.pendingCount} task(s) still awaiting admin approval. Claim unlocks after all Level ${level} tasks are approved.`,
+      };
+    }
+    return {
+      error: `Finish all Level ${level} tasks and get admin approval first (${approval.approvedCount}/${approval.totalTasks} approved).`,
+    };
+  }
 
   await syncLevelCompletionIfReady(user.id, level);
 
