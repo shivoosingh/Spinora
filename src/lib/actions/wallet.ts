@@ -125,6 +125,71 @@ export async function getWalletTransactions(userId?: string, limit = 10) {
   return data || [];
 }
 
+export interface AdminUserBonusActivity {
+  transactions: Array<{
+    id: string;
+    amount: number;
+    wallet_type: string;
+    transaction_type: string;
+    source: string;
+    description: string | null;
+    created_at: string;
+  }>;
+  gameLoads: Array<{
+    id: string;
+    game_name: string;
+    game_slug: string;
+    amount: number;
+    load_type: string;
+    status: string;
+    game_username: string | null;
+    redeem_all: boolean | null;
+    created_at: string;
+    completed_at: string | null;
+    error_message: string | null;
+  }>;
+}
+
+/** Bonus-wallet debits/credits and bonus-side game jobs for admin user review. */
+export async function getAdminUserBonusActivity(
+  userId: string,
+  limit = 50
+): Promise<AdminUserBonusActivity | { error: string }> {
+  const auth = await requireAdmin();
+  if (auth.error) return { error: auth.error };
+
+  const [txRes, loadsRes] = await Promise.all([
+    auth.supabase!
+      .from("wallet_transactions")
+      .select("id, amount, wallet_type, transaction_type, source, description, created_at")
+      .eq("user_id", userId)
+      .in("wallet_type", ["bonus", "bonus_redeem"])
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    auth.supabase!
+      .from("game_load_requests")
+      .select(
+        "id, game_name, game_slug, amount, load_type, status, game_username, redeem_all, created_at, completed_at, error_message"
+      )
+      .eq("user_id", userId)
+      .eq("wallet_type", "bonus")
+      .order("created_at", { ascending: false })
+      .limit(limit),
+  ]);
+
+  if (txRes.error?.message.includes("wallet_transactions")) {
+    return { error: "Run supabase/wallets.sql in Supabase." };
+  }
+  if (loadsRes.error?.message.includes("game_load_requests")) {
+    return { error: "Run supabase/game-load-requests.sql in Supabase." };
+  }
+
+  return {
+    transactions: txRes.data ?? [],
+    gameLoads: loadsRes.data ?? [],
+  };
+}
+
 export async function adminGrantWallet(
   userId: string,
   amount: number,

@@ -55,10 +55,15 @@ export default async function AdminGameLoadsPage() {
                           ? "Free account create"
                           : load.load_type === "redeem"
                             ? load.redeem_all
-                              ? "Redeem all → current wallet"
-                              : `$${Number(load.amount).toFixed(2)} redeem → current wallet`
+                              ? `Redeem all → ${load.wallet_type === "bonus" ? "Bonus Redeem" : "Deposit Redeem"}`
+                              : `$${Number(load.amount).toFixed(2)} redeem → ${load.wallet_type === "bonus" ? "Bonus Redeem" : "Deposit Redeem"}`
                             : `$${Number(load.amount).toFixed(2)} from ${load.wallet_type} wallet`}
                       </p>
+                      {load.wallet_type === "bonus" && load.load_type === "load" && (
+                        <Badge variant="secondary" className="mt-1">
+                          Bonus wallet load
+                        </Badge>
+                      )}
                       {load.game_username && (
                         <p className="text-sm mt-1">Game user: {load.game_username}</p>
                       )}

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { UserActions } from "@/components/admin/user-actions";
 import { AdminWalletGrant } from "@/components/admin/admin-wallet-grant";
+import { AdminUserBonusHistory } from "@/components/admin/admin-user-bonus-history";
 import { WalletCard } from "@/components/wallet/wallet-card";
 import { formatDate } from "@/lib/utils";
 import { MessageCircle, Search } from "lucide-react";
@@ -100,7 +101,13 @@ export function AdminUsersList({ users }: AdminUsersListProps) {
                 />
               </div>
               <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 pt-2 border-t border-border">
-                <AdminWalletGrant userId={user.id} />
+                <div className="space-y-2 min-w-0 flex-1">
+                  <AdminWalletGrant userId={user.id} />
+                  <AdminUserBonusHistory
+                    userId={user.id}
+                    userName={user.full_name || user.email}
+                  />
+                </div>
                 <div className="flex flex-wrap gap-2 sm:justify-end">
                   {user.role !== "admin" && (
                     <Button variant="outline" size="sm" asChild className="gap-1.5">
