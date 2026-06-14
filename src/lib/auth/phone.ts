@@ -1,3 +1,5 @@
+import { parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
+
 /** Popular codes shown as hints only — any valid E.164 number is accepted. */
 export const PHONE_EXAMPLES = [
   "+1 555 123 4567",
@@ -14,44 +16,92 @@ export const PHONE_EXAMPLES = [
   "+52 55 1234 5678",
 ];
 
-/**
- * Parse any international phone input into E.164 (+XXXXXXXX).
- * Accepts spaces, dashes, parentheses; requires country code with +.
- */
-export function parseInternationalPhone(input: string): string | null {
+export const INVALID_PHONE_MESSAGE =
+  "Enter a valid phone number for your country";
+
+export type ParsePhoneOptions = {
+  /** ISO 3166-1 alpha-2 when parsing national format (e.g. NP, US) */
+  countryIso?: string;
+  /** Require libphonenumber isValid() — use for signup and profile saves */
+  validate?: boolean;
+};
+
+function asCountryCode(iso: string | undefined): CountryCode | undefined {
+  if (!iso || !/^[A-Z]{2}$/i.test(iso)) return undefined;
+  return iso.toUpperCase() as CountryCode;
+}
+
+function parsePhoneInput(input: string, defaultCountry?: CountryCode) {
   const trimmed = input.trim();
   if (!trimmed) return null;
 
-  if (trimmed.startsWith("+")) {
-    const digits = trimmed.slice(1).replace(/\D/g, "");
-    if (digits.length < 8 || digits.length > 15) return null;
-    return `+${digits}`;
-  }
+  try {
+    const parsed = parsePhoneNumberFromString(trimmed, defaultCountry);
+    if (parsed) return parsed;
 
-  // Digits only without + — treat as incomplete unless 10+ digits (user omitted +)
-  const digits = trimmed.replace(/\D/g, "");
-  if (digits.length >= 10 && digits.length <= 15) {
-    return `+${digits}`;
+    if (!trimmed.startsWith("+")) {
+      const digits = trimmed.replace(/\D/g, "");
+      if (digits) {
+        return parsePhoneNumberFromString(digits, defaultCountry) ?? null;
+      }
+    }
+  } catch {
+    return null;
   }
 
   return null;
 }
 
-/** @deprecated Use parseInternationalPhone — kept for split-field fallback */
-export function formatPhoneToE164(countryCode: string, localNumber: string): string | null {
+/**
+ * Parse phone input into E.164 (+XXXXXXXX).
+ * With validate: true, rejects numbers that fail libphonenumber country rules.
+ */
+export function parseInternationalPhone(
+  input: string,
+  options?: ParsePhoneOptions
+): string | null {
+  const defaultCountry = asCountryCode(options?.countryIso);
+  const parsed = parsePhoneInput(input, defaultCountry);
+  if (!parsed) return null;
+
+  if (options?.validate && !parsed.isValid()) return null;
+
+  return parsed.format("E.164");
+}
+
+/** Signup / profile save — strict libphonenumber validation */
+export function parseValidInternationalPhone(
+  input: string,
+  countryIso?: string
+): string | null {
+  return parseInternationalPhone(input, { countryIso, validate: true });
+}
+
+/** Country dropdown + local digits — strict validation for signup */
+export function phoneFromParts(countryIso: string, localNumber: string): string | null {
+  return parseValidInternationalPhone(localNumber, countryIso);
+}
+
+/** @deprecated Use phoneFromParts — kept for split-field fallback */
+export function formatPhoneToE164(
+  countryCode: string,
+  localNumber: string,
+  countryIso?: string
+): string | null {
   const local = localNumber.trim();
   if (local.startsWith("+")) {
-    return parseInternationalPhone(local);
+    return parseInternationalPhone(local, { countryIso, validate: true });
+  }
+
+  if (countryIso) {
+    return parseValidInternationalPhone(local, countryIso);
   }
 
   const codeDigits = countryCode.replace(/\D/g, "");
   const localDigits = local.replace(/\D/g, "");
   if (!codeDigits || localDigits.length < 4) return null;
 
-  const total = codeDigits + localDigits;
-  if (total.length < 8 || total.length > 15) return null;
-
-  return `+${codeDigits}${localDigits}`;
+  return parseValidInternationalPhone(`+${codeDigits}${localDigits}`);
 }
 
 export function isValidOtpCode(code: string): boolean {

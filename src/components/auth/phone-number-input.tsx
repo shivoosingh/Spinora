@@ -14,14 +14,13 @@ import {
   DEFAULT_COUNTRY_ISO,
   getCountryByIso,
 } from "@/lib/auth/country-codes";
-import { formatPhoneToE164 } from "@/lib/auth/phone";
+import { phoneFromParts as parsePhoneFromParts } from "@/lib/auth/phone";
 
 export { DEFAULT_COUNTRY_ISO };
 
 export function phoneFromParts(countryIso: string, localNumber: string): string | null {
-  const country = getCountryByIso(countryIso);
-  if (!country) return null;
-  return formatPhoneToE164(country.dial, localNumber);
+  if (!getCountryByIso(countryIso)) return null;
+  return parsePhoneFromParts(countryIso, localNumber);
 }
 
 interface PhoneNumberInputProps {

@@ -10,6 +10,7 @@ import {
   PhoneNumberInput,
   phoneFromParts,
 } from "@/components/auth/phone-number-input";
+import { INVALID_PHONE_MESSAGE } from "@/lib/auth/phone";
 import { saveUserContactInfo } from "@/lib/actions/auth";
 import { toast } from "sonner";
 
@@ -28,7 +29,7 @@ export function CompleteProfilePrompt({ email, fullName }: CompleteProfilePrompt
     e.preventDefault();
     const phone = phoneFromParts(countryIso, phoneLocal);
     if (!phone) {
-      toast.error("Enter a valid phone number for your country");
+      toast.error(INVALID_PHONE_MESSAGE);
       return;
     }
 

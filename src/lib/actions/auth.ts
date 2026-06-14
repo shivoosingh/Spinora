@@ -1,6 +1,11 @@
 "use server";
 
-import { parseInternationalPhone, phoneLookupVariants } from "@/lib/auth/phone";
+import {
+  INVALID_PHONE_MESSAGE,
+  parseInternationalPhone,
+  parseValidInternationalPhone,
+  phoneLookupVariants,
+} from "@/lib/auth/phone";
 import { isEmailIdentifier, normalizeEmail, formatAuthErrorMessage } from "@/lib/auth/identifier";
 import { buildAuthCallbackUrl } from "@/lib/auth/callback-url";
 import { createClient } from "@/lib/supabase/server";
@@ -76,8 +81,8 @@ export async function resolveLoginEmail(
 export async function isPhoneAvailable(
   phone: string
 ): Promise<{ available: boolean; error?: string }> {
-  const e164 = parseInternationalPhone(phone);
-  if (!e164) return { available: false, error: "Invalid phone number" };
+  const e164 = parseValidInternationalPhone(phone);
+  if (!e164) return { available: false, error: INVALID_PHONE_MESSAGE };
 
   const { profile, error } = await findProfileByPhone(phone);
 
@@ -352,8 +357,8 @@ export async function registerWithEmail(input: {
   redirect?: string;
   callbackOrigin: string;
 }): Promise<RegisterWithEmailResult> {
-  const e164 = parseInternationalPhone(input.phone);
-  if (!e164) return { ok: false, error: "Invalid phone number" };
+  const e164 = parseValidInternationalPhone(input.phone);
+  if (!e164) return { ok: false, error: INVALID_PHONE_MESSAGE };
 
   const phoneCheck = await isPhoneAvailable(e164);
   if (!phoneCheck.available) {
@@ -432,8 +437,8 @@ export async function finalizeRegistrationAfterSignUp(input: {
   email: string;
   phone: string;
 }): Promise<{ ok: boolean; error?: string }> {
-  const e164 = parseInternationalPhone(input.phone);
-  if (!e164) return { ok: false, error: "Invalid phone number" };
+  const e164 = parseValidInternationalPhone(input.phone);
+  if (!e164) return { ok: false, error: INVALID_PHONE_MESSAGE };
 
   return persistContactOnProfile(input.userId, {
     phone: e164,
@@ -448,8 +453,8 @@ export async function saveUserContactInfo(
   fullName: string,
   email: string
 ): Promise<{ ok: boolean; error?: string }> {
-  const e164 = parseInternationalPhone(phone);
-  if (!e164) return { ok: false, error: "Invalid phone number" };
+  const e164 = parseValidInternationalPhone(phone);
+  if (!e164) return { ok: false, error: INVALID_PHONE_MESSAGE };
 
   const supabase = await createClient();
   const {
@@ -476,7 +481,7 @@ export async function syncProfileFromAuthMetadata(): Promise<void> {
 
   const meta = user.user_metadata ?? {};
   const phoneRaw = meta.phone as string | undefined;
-  const phone = phoneRaw ? parseInternationalPhone(phoneRaw) : null;
+  const phone = phoneRaw ? parseValidInternationalPhone(phoneRaw) : null;
   const fullName = (meta.full_name as string | undefined)?.trim();
   const email = user.email ? normalizeEmail(user.email) : null;
 

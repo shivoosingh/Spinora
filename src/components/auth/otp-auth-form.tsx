@@ -7,7 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { parseInternationalPhone, isValidOtpCode, PHONE_EXAMPLES } from "@/lib/auth/phone";
+import {
+  INVALID_PHONE_MESSAGE,
+  parseValidInternationalPhone,
+  isValidOtpCode,
+  PHONE_EXAMPLES,
+} from "@/lib/auth/phone";
 import { isEmailIdentifier, normalizeEmail, maskEmail, formatAuthErrorMessage } from "@/lib/auth/identifier";
 import { resolveLoginEmail, isPhoneAvailable, isEmailAvailable, saveUserContactInfo } from "@/lib/actions/auth";
 
@@ -57,9 +62,9 @@ export function OtpAuthForm({ mode, redirect = "/", referralCodeFromUrl }: OtpAu
         setLoading(false);
         return;
       }
-      phone = parseInternationalPhone(phoneInput);
+      phone = parseValidInternationalPhone(phoneInput);
       if (!phone) {
-        toast.error("Enter a valid phone with country code, e.g. +44 7911 123456");
+        toast.error(INVALID_PHONE_MESSAGE);
         setLoading(false);
         return;
       }

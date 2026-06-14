@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { DEFAULT_COUNTRY_ISO, PhoneNumberInput, phoneFromParts } from "@/components/auth/phone-number-input";
+import { INVALID_PHONE_MESSAGE } from "@/lib/auth/phone";
 import { buildAuthCallbackUrl, getEmailAuthOrigin } from "@/lib/auth/callback-url";
 import { normalizeEmail, formatAuthErrorMessage } from "@/lib/auth/identifier";
 import {
@@ -124,7 +125,7 @@ export function EmailAuthForm({ mode, redirect = "/", referralCodeFromUrl }: Ema
 
     const phone = phoneFromParts(countryIso, phoneLocal);
     if (!phone) {
-      toast.error("Enter a valid phone number for your country");
+      toast.error(INVALID_PHONE_MESSAGE);
       setLoading(false);
       return;
     }
