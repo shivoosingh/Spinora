@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import { GamePageShell } from "@/components/games/game-page-shell";
 import { createMetadata } from "@/lib/seo/metadata";
+import { getGameSeoDescription, getGameSeoKeywords, getGameSeoTitle } from "@/lib/seo/game-seo";
+import { BreadcrumbSchema, GamePageSchema } from "@/lib/seo/json-ld";
+import { SITE_URL } from "@/lib/constants";
 import { GAMES, getGameBySlug } from "@/lib/games";
 import { isWalletLoadEnabledForGame } from "@/lib/game-automation/config";
 
@@ -19,10 +22,11 @@ export async function generateMetadata({ params }: GamePageProps) {
   if (!game) return {};
 
   return createMetadata({
-    title: `${game.name} — Download & Create Account`,
-    description: game.bio,
-    keywords: [game.name, game.category, "download", "game account", "Spinora", game.provider],
+    title: getGameSeoTitle(game),
+    description: getGameSeoDescription(game),
+    keywords: getGameSeoKeywords(game),
     path: `/games/${game.slug}`,
+    ogImage: game.image,
   });
 }
 
@@ -34,10 +38,19 @@ export default async function GamePage({ params, searchParams }: GamePageProps) 
   if (!game) notFound();
 
   return (
-    <GamePageShell
-      game={game}
-      autoCreate={create === "1"}
-      walletLoadEnabled={isWalletLoadEnabledForGame(game.slug)}
-    />
+    <>
+      <BreadcrumbSchema
+        items={[
+          { name: "Home", url: SITE_URL },
+          { name: game.name, url: `${SITE_URL}/games/${game.slug}` },
+        ]}
+      />
+      <GamePageSchema game={game} />
+      <GamePageShell
+        game={game}
+        autoCreate={create === "1"}
+        walletLoadEnabled={isWalletLoadEnabledForGame(game.slug)}
+      />
+    </>
   );
 }

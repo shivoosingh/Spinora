@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState, useRef, type ReactNode } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { HomeSidebar, SIDEBAR_LINKS } from "@/components/home/home-sidebar";
@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 import { LazyWhenVisible } from "@/components/ui/lazy-when-visible";
+import { usePrefetchDashboardRoutes } from "@/lib/dashboard/prefetch-dashboard-routes";
 
 function SectionPlaceholder() {
   return <div className="h-32 rounded-xl bg-white/[0.03] animate-pulse" aria-hidden />;
@@ -54,6 +55,22 @@ const ActivityToast = dynamic(
   { ssr: false, loading: () => null }
 );
 
+function DeferredActivityToast() {
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(() => setReady(true), { timeout: 8000 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = setTimeout(() => setReady(true), 5000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (!ready) return null;
+  return <ActivityToast />;
+}
+
 const MAIN_TABS: { id: HomeGameTab; label: string }[] = [
   { id: "trending", label: "Most Trending Games" },
   { id: "all", label: "All" },
@@ -67,6 +84,7 @@ interface HomeLandingShellProps {
 
 export function HomeLandingShell({ hero }: HomeLandingShellProps) {
   const router = useRouter();
+  usePrefetchDashboardRoutes();
   const [sidebarTab, setSidebarTab] = useState<GameTab>("all");
   const [mainTab, setMainTab] = useState<HomeGameTab>("trending");
   const [search, setSearch] = useState("");
@@ -177,7 +195,7 @@ export function HomeLandingShell({ hero }: HomeLandingShellProps) {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
             {displayGames.length > 0 ? (
               displayGames.map((game, index) => (
-                <GameCard key={game.id} game={game} eager={index < 6} />
+                <GameCard key={game.id} game={game} eager={index < 4} />
               ))
             ) : (
               <p className="col-span-full text-center py-12 text-muted-foreground">
@@ -211,7 +229,7 @@ export function HomeLandingShell({ hero }: HomeLandingShellProps) {
         </LazyWhenVisible>
       </div>
 
-      <ActivityToast />
+      <DeferredActivityToast />
     </AppShell>
   );
 }

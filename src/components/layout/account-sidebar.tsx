@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef } from "react";
 import {
   LayoutDashboard,
   MessageSquare,
@@ -14,16 +15,17 @@ import {
   ShieldCheck,
   Gamepad2,
   Banknote,
+  History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUnreadMessages } from "@/hooks/use-unread-messages";
 import { UnreadBadge } from "@/components/ui/unread-badge";
-import { usePrefetchDashboardRoutes } from "@/lib/dashboard/prefetch-dashboard-routes";
 
 const ACCOUNT_LINKS = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true },
   { href: "/#games", label: "Games", icon: Gamepad2, gamesLink: true },
   { href: "/dashboard/deposit", label: "Deposit", icon: Banknote },
+  { href: "/dashboard/deposits", label: "My Deposits", icon: History },
   { href: "/dashboard/messages", label: "Messages", icon: MessageSquare },
   { href: "/dashboard/vip", label: "VIP Status", icon: Crown },
   { href: "/dashboard/referrals", label: "Referrals", icon: Users },
@@ -32,6 +34,10 @@ const ACCOUNT_LINKS = [
   { href: "/spin", label: "Daily Spin", icon: Sparkles },
 ];
 
+const PREFETCH_ROUTES = ACCOUNT_LINKS.map((link) => link.href).filter(
+  (href) => !href.startsWith("/#")
+);
+
 interface AccountSidebarProps {
   walletSlot?: React.ReactNode;
   className?: string;
@@ -39,8 +45,21 @@ interface AccountSidebarProps {
 
 export function AccountSidebar({ walletSlot, className }: AccountSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const prefetched = useRef(new Set<string>());
   const { count: unreadMessages } = useUnreadMessages();
-  usePrefetchDashboardRoutes();
+
+  function warmRoute(href: string) {
+    if (prefetched.current.has(href) || href.startsWith("/#")) return;
+    prefetched.current.add(href);
+    router.prefetch(href);
+  }
+
+  useEffect(() => {
+    for (const href of PREFETCH_ROUTES) {
+      warmRoute(href);
+    }
+  }, [router]);
 
   return (
     <aside
@@ -67,7 +86,10 @@ export function AccountSidebar({ walletSlot, className }: AccountSidebarProps) {
               <Link
                 key={href}
                 href={href}
-                prefetch
+                prefetch={!href.startsWith("/#")}
+                onMouseEnter={() => warmRoute(href)}
+                onFocus={() => warmRoute(href)}
+                onTouchStart={() => warmRoute(href)}
                 className={cn(
                   "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-colors",
                   active
@@ -95,6 +117,7 @@ export function AccountSidebar({ walletSlot, className }: AccountSidebarProps) {
           <Link
             href="/dashboard/messages"
             prefetch
+            onTouchStart={() => warmRoute("/dashboard/messages")}
             className="block text-center py-2 rounded-lg bg-white/5 text-white text-xs font-medium hover:bg-white/10 transition-colors border border-white/10"
           >
             Open Messages

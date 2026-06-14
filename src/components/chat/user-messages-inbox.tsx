@@ -9,13 +9,14 @@ import { createClient } from "@/lib/supabase/client";
 import { uploadChatAttachment } from "@/lib/chat/attachments";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatMessageContent } from "@/components/chat/chat-message-content";
-import { MobileChatShell } from "@/components/chat/mobile-chat-shell";
+import { MobileChatShell, useMobileChatClose } from "@/components/chat/mobile-chat-shell";
 import { UnreadBadge } from "@/components/ui/unread-badge";
 import {
   ensureUserConversation,
   getUserConversations,
   initUserMessagesInbox,
   type ConversationPreview,
+  type UserMessagesInboxInitialData,
 } from "@/lib/actions/messages";
 import {
   markConversationReadClient,
@@ -27,7 +28,9 @@ import { CHAT_INBOX_CARD_CLASS, CHAT_SCROLL_CLASS } from "@/lib/chat/chat-layout
 import { useChatAutoScroll } from "@/lib/chat/use-chat-auto-scroll";
 import { CHAT_INCOMING_EVENT, type ChatIncomingDetail } from "@/lib/chat/events";
 import { playIncomingMessageSound } from "@/lib/chat/message-notification-sound";
-import { subscribeToMessageInserts } from "@/lib/chat/subscribe-messages";
+import { useDashboardProfile } from "@/lib/dashboard/dashboard-profile-context";
+import { appendMessage, mergeMessagesById } from "@/lib/chat/merge-messages";
+import { subscribeToConversationInserts, subscribeToMessageInserts } from "@/lib/chat/subscribe-messages";
 import { toast } from "sonner";
 import { ArrowLeft, Headphones, MessageCircle } from "lucide-react";
 import type { Message } from "@/types/database";
@@ -61,6 +64,16 @@ function UserChatPanel({
   scrollRef,
   onScrollMessages,
 }: UserChatPanelProps) {
+  const closeViaBack = useMobileChatClose();
+
+  function handleBack() {
+    if (closeViaBack) {
+      closeViaBack();
+      return;
+    }
+    onBack?.();
+  }
+
   if (!selectedConversation) {
     return (
       <div className="flex-1 flex items-center justify-center p-8 text-center">
@@ -80,7 +93,7 @@ function UserChatPanel({
             variant="ghost"
             size="icon"
             className="shrink-0"
-            onClick={onBack}
+            onClick={handleBack}
             aria-label="Back to chats"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -151,15 +164,28 @@ function UserChatPanel({
   );
 }
 
-export function UserMessagesInbox() {
+export function UserMessagesInbox({
+  initialData,
+}: {
+  initialData?: UserMessagesInboxInitialData;
+} = {}) {
+  const dashboardProfile = useDashboardProfile();
   const searchParams = useSearchParams();
-  const [conversations, setConversations] = useState<ConversationPreview[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [userId, setUserId] = useState<string | null>(null);
+  const profileUserId = dashboardProfile?.userId ?? null;
+  const hasServerData = Boolean(initialData?.userId && !initialData.error);
+  const [conversations, setConversations] = useState<ConversationPreview[]>(
+    () => initialData?.conversations ?? []
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(
+    () => initialData?.selectedConversationId ?? null
+  );
+  const [messages, setMessages] = useState<Message[]>(() => initialData?.messages ?? []);
+  const [userId, setUserId] = useState<string | null>(
+    () => initialData?.userId ?? profileUserId
+  );
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [initLoading, setInitLoading] = useState(true);
+  const [initLoading, setInitLoading] = useState(!hasServerData && !profileUserId);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const supabase = useMemo(() => createClient(), []);
@@ -199,7 +225,7 @@ export function UserMessagesInbox() {
         .eq("conversation_id", convId)
         .order("created_at", { ascending: true });
 
-      setMessages(data ?? []);
+      setMessages((prev) => mergeMessagesById(prev, data ?? []));
       if (userId) void markConversationReadClient(supabase, convId, userId);
       if (options?.syncSidebar !== false) {
         void refreshUnread();
@@ -210,7 +236,22 @@ export function UserMessagesInbox() {
   );
 
   const init = useCallback(async () => {
+    if (hasServerData) {
+      void refreshUnread();
+      return;
+    }
+
+    if (profileUserId && !userId) {
+      setUserId(profileUserId);
+    }
+
     if (!supabase) {
+      setInitLoading(false);
+      return;
+    }
+
+    const activeUserId = userId ?? profileUserId;
+    if (!activeUserId) {
       setInitLoading(false);
       return;
     }
@@ -220,7 +261,6 @@ export function UserMessagesInbox() {
       const result = await initUserMessagesInbox();
 
       if (result.error || !result.userId) {
-        setInitLoading(false);
         return;
       }
 
@@ -228,13 +268,20 @@ export function UserMessagesInbox() {
       setConversations(result.conversations ?? []);
       if (result.selectedConversationId) {
         setSelectedId(result.selectedConversationId);
+        selectedIdRef.current = result.selectedConversationId;
       }
       setMessages(result.messages ?? []);
       void refreshUnread();
     } finally {
       setInitLoading(false);
     }
-  }, [supabase, refreshUnread]);
+  }, [supabase, refreshUnread, hasServerData, profileUserId, userId]);
+
+  useEffect(() => {
+    if (profileUserId) {
+      setUserId((current) => current ?? profileUserId);
+    }
+  }, [profileUserId]);
 
   useEffect(() => {
     init();
@@ -260,48 +307,93 @@ export function UserMessagesInbox() {
     void openConversation(conversationParam);
   }, [searchParams, initLoading, openConversation]);
 
+  const handleIncomingMessage = useCallback(
+    (msg: Message) => {
+      if (!supabase || !userId || msg.sender_id === userId) return;
+
+      playIncomingMessageSound(msg.sender_id, userId);
+
+      if (msg.conversation_id === selectedIdRef.current) {
+        setMessages((prev) => appendMessage(prev, msg));
+        setMobileChatOpen(true);
+        void markConversationReadClient(supabase!, msg.conversation_id, userId).then(() =>
+          scheduleInboxSync()
+        );
+        return;
+      }
+
+      setSelectedId(msg.conversation_id);
+      selectedIdRef.current = msg.conversation_id;
+      setMobileChatOpen(true);
+      setMessages((prev) => appendMessage(prev, msg));
+      scheduleInboxSync();
+      void loadMessages(msg.conversation_id, { syncSidebar: false });
+    },
+    [userId, supabase, scheduleInboxSync, loadMessages]
+  );
+
   useEffect(() => {
     if (!supabase || !userId) return;
-
-    const convIds = conversations.map((c) => c.id);
 
     return subscribeToMessageInserts(
       supabase,
       `user-inbox-${userId}`,
       userId,
       (msg) => {
-        playIncomingMessageSound(msg.sender_id, userId);
-
-        if (msg.conversation_id === selectedIdRef.current) {
-          setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
-          setMobileChatOpen(true);
-          const chatVisible =
-            mobileChatOpenRef.current || window.matchMedia("(min-width: 768px)").matches;
-          if (chatVisible) {
-            void markConversationReadClient(supabase, msg.conversation_id, userId).then(() =>
-              scheduleInboxSync()
-            );
-          } else {
-            scheduleInboxSync();
-          }
-          return;
-        }
-
-        scheduleInboxSync();
-      },
-      convIds.length > 0 ? { conversationIds: convIds } : undefined
+        if (msg.conversation_id === selectedIdRef.current) return;
+        handleIncomingMessage(msg);
+      }
     );
-  }, [conversations, supabase, userId, scheduleInboxSync]);
+  }, [supabase, userId, handleIncomingMessage]);
+
+  useEffect(() => {
+    if (!supabase || !selectedId) return;
+
+    return subscribeToConversationInserts(
+      supabase,
+      `user-live-${selectedId}`,
+      selectedId,
+      (msg) => {
+        if (msg.sender_id === userId) return;
+        handleIncomingMessage(msg);
+      }
+    );
+  }, [supabase, selectedId, userId, handleIncomingMessage]);
+
+  useEffect(() => {
+    if (!supabase || !selectedId) return;
+
+    const poll = () => {
+      if (document.visibilityState !== "visible") return;
+      void supabase
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", selectedId)
+        .order("created_at", { ascending: true })
+        .then(({ data }) => {
+          if (data) setMessages((prev) => mergeMessagesById(prev, data));
+        });
+    };
+
+    poll();
+    const interval = setInterval(poll, 800);
+    return () => clearInterval(interval);
+  }, [supabase, selectedId]);
 
   useEffect(() => {
     function onChatIncoming(event: Event) {
-      const { conversationId } = (event as CustomEvent<ChatIncomingDetail>).detail;
-      if (conversationId) void openConversation(conversationId);
+      const detail = (event as CustomEvent<ChatIncomingDetail>).detail;
+      if (!detail.conversationId) return;
+      if (detail.message) {
+        handleIncomingMessage(detail.message);
+        return;
+      }
+      void openConversation(detail.conversationId);
     }
 
     window.addEventListener(CHAT_INCOMING_EVENT, onChatIncoming);
     return () => window.removeEventListener(CHAT_INCOMING_EVENT, onChatIncoming);
-  }, [openConversation]);
+  }, [openConversation, handleIncomingMessage]);
 
   const messageFingerprint = messages.length > 0 ? messages[messages.length - 1]?.id : "";
   const { onScroll: onScrollMessages } = useChatAutoScroll(
@@ -355,9 +447,7 @@ export function UserMessagesInbox() {
     }
 
     if (result.message) {
-      setMessages((prev) =>
-        prev.some((m) => m.id === result.message!.id) ? prev : [...prev, result.message!]
-      );
+      setMessages((prev) => appendMessage(prev, result.message!));
     }
 
     setLoading(false);
@@ -464,7 +554,10 @@ export function UserMessagesInbox() {
       </Card>
 
       {/* Mobile full-screen chat — portaled to body so composer is never clipped */}
-      <MobileChatShell open={mobileChatOpen && !!selectedConversation}>
+      <MobileChatShell
+        open={mobileChatOpen && !!selectedConversation}
+        onClose={() => setMobileChatOpen(false)}
+      >
         <UserChatPanel
           {...chatPanelProps}
           showMobileBack

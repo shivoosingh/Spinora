@@ -6,6 +6,7 @@ import { ReferralShare } from "@/components/dashboard/referral-share";
 import { DashboardPageHeader } from "@/components/dashboard/dashboard-page-header";
 import { DashboardRouteLoading } from "@/components/dashboard/dashboard-route-loading";
 import { useDashboardSession } from "@/lib/dashboard/use-dashboard-session";
+import { useDashboardProfile } from "@/lib/dashboard/dashboard-profile-context";
 import { formatDate } from "@/lib/utils";
 
 interface ReferralRow {
@@ -16,8 +17,11 @@ interface ReferralRow {
 }
 
 export function ReferralsPageClient() {
+  const dashboardProfile = useDashboardProfile();
   const { supabase, userId, ready } = useDashboardSession();
-  const [referralCode, setReferralCode] = useState("");
+  const [referralCode, setReferralCode] = useState(
+    () => dashboardProfile?.profile.referral_code ?? ""
+  );
   const [referrals, setReferrals] = useState<ReferralRow[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -25,24 +29,24 @@ export function ReferralsPageClient() {
     if (!ready || !supabase || !userId) return;
 
     let cancelled = false;
-    void Promise.all([
-      supabase.from("profiles").select("referral_code").eq("id", userId).single(),
-      supabase
-        .from("referrals")
-        .select("*, referred:profiles!referrals_referred_id_fkey(full_name, email)")
-        .eq("referrer_id", userId)
-        .order("created_at", { ascending: false }),
-    ]).then(([profileRes, referralsRes]) => {
-      if (cancelled) return;
-      setReferralCode(profileRes.data?.referral_code ?? "");
-      setReferrals((referralsRes.data ?? []) as ReferralRow[]);
-      setLoaded(true);
-    });
+    void supabase
+      .from("referrals")
+      .select("*, referred:profiles!referrals_referred_id_fkey(full_name, email)")
+      .eq("referrer_id", userId)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => {
+        if (cancelled) return;
+        if (!referralCode && dashboardProfile?.profile.referral_code) {
+          setReferralCode(dashboardProfile.profile.referral_code);
+        }
+        setReferrals((data ?? []) as ReferralRow[]);
+        setLoaded(true);
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [ready, supabase, userId]);
+  }, [ready, supabase, userId, dashboardProfile]);
 
   if (!loaded) {
     return <DashboardRouteLoading cards={3} />;
@@ -79,30 +83,30 @@ export function ReferralsPageClient() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Referral History</CardTitle>
+          <CardTitle>Your Referrals</CardTitle>
         </CardHeader>
         <CardContent>
-          {referrals.length > 0 ? (
+          {referrals.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              No referrals yet. Share your link to start earning points!
+            </p>
+          ) : (
             <div className="space-y-3">
               {referrals.map((ref) => (
                 <div
                   key={ref.id}
-                  className="flex items-center justify-between p-3 rounded-lg bg-muted/50"
+                  className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border"
                 >
                   <div>
                     <p className="font-medium text-sm">
-                      {ref.referred?.full_name || "User"}
+                      {ref.referred?.full_name || ref.referred?.email || "User"}
                     </p>
                     <p className="text-xs text-muted-foreground">{formatDate(ref.created_at)}</p>
                   </div>
-                  <span className="text-sm text-primary font-semibold">+{ref.reward_points} pts</span>
+                  <p className="text-sm font-semibold text-primary">+{ref.reward_points} pts</p>
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="text-center text-muted-foreground py-8">
-              No referrals yet. Share your link to get started!
-            </p>
           )}
         </CardContent>
       </Card>

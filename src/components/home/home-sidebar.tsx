@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutGrid,
   Clock,
@@ -47,6 +47,10 @@ const ACCOUNT_LINKS = [
   { href: "/spin", label: "Daily Spin", icon: Sparkles },
 ];
 
+const PREFETCH_ROUTES = ACCOUNT_LINKS.map((link) => link.href).filter(
+  (href) => !href.startsWith("/#") && href !== "/"
+);
+
 interface HomeSidebarProps {
   activeTab: GameTab;
   onTabChange: (tab: GameTab) => void;
@@ -55,7 +59,13 @@ interface HomeSidebarProps {
   className?: string;
 }
 
-function SidebarFooter({ isLoggedIn }: { isLoggedIn: boolean }) {
+function SidebarFooter({
+  isLoggedIn,
+  onWarmMessages,
+}: {
+  isLoggedIn: boolean;
+  onWarmMessages?: () => void;
+}) {
   return (
     <div className="mt-auto space-y-3 pt-2">
       <div className="rounded-xl p-4 bg-gradient-to-br from-[#1f1f1f] to-[#141414] border border-white/5">
@@ -68,6 +78,7 @@ function SidebarFooter({ isLoggedIn }: { isLoggedIn: boolean }) {
         </p>
         <Link
           href={isLoggedIn ? "/dashboard/messages" : "/support"}
+          onTouchStart={() => isLoggedIn && onWarmMessages?.()}
           className="block text-center py-2 rounded-lg bg-white/5 text-white text-xs font-medium hover:bg-white/10 transition-colors border border-white/10"
         >
           {isLoggedIn ? "Open Messages" : "Contact Support"}
@@ -92,16 +103,41 @@ export function HomeSidebar({
   className,
 }: HomeSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const prefetched = useRef(new Set<string>());
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const { count: unreadMessages } = useUnreadMessages();
 
+  function warmRoute(href: string) {
+    if (prefetched.current.has(href) || href.startsWith("/#") || href === "/") return;
+    prefetched.current.add(href);
+    router.prefetch(href);
+  }
+
   useEffect(() => {
-    import("@/lib/supabase/client").then(({ createClient }) => {
-      const supabase = createClient();
-      if (!supabase) return;
-      supabase.auth.getUser().then(({ data: { user } }) => setIsLoggedIn(!!user));
-    });
-  }, []);
+    const run = () => {
+      import("@/lib/supabase/client").then(({ createClient }) => {
+        const supabase = createClient();
+        if (!supabase) return;
+        void supabase.auth.getSession().then(({ data: { session } }) => {
+          const loggedIn = !!session?.user;
+          setIsLoggedIn(loggedIn);
+          if (loggedIn) {
+            for (const href of PREFETCH_ROUTES) {
+              warmRoute(href);
+            }
+          }
+        });
+      });
+    };
+
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(run, { timeout: 1200 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const timer = setTimeout(run, 300);
+    return () => clearTimeout(timer);
+  }, [router]);
 
   return (
     <aside
@@ -136,6 +172,10 @@ export function HomeSidebar({
                 <Link
                   key={href}
                   href={href}
+                  prefetch={!href.startsWith("/#") && href !== "/"}
+                  onMouseEnter={() => warmRoute(href)}
+                  onFocus={() => warmRoute(href)}
+                  onTouchStart={() => warmRoute(href)}
                   className={cn(
                     "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm transition-colors",
                     active
@@ -222,6 +262,7 @@ export function HomeSidebar({
           <p className="text-xs text-purple-200/70 mb-3">Unlock VIP rewards and exclusive perks.</p>
           <Link
             href="/dashboard/vip"
+            onTouchStart={() => warmRoute("/dashboard/vip")}
             className="block text-center py-2 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 text-gray-900 text-xs font-bold hover:opacity-90 transition-opacity"
           >
             View VIP Status
@@ -229,7 +270,10 @@ export function HomeSidebar({
         </div>
       )}
 
-      <SidebarFooter isLoggedIn={isLoggedIn} />
+      <SidebarFooter
+        isLoggedIn={isLoggedIn}
+        onWarmMessages={() => warmRoute("/dashboard/messages")}
+      />
     </aside>
   );
 }

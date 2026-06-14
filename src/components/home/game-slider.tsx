@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GAMES } from "@/lib/games";
 import { CompactGameCard } from "@/components/home/compact-game-card";
+import { useInView } from "@/lib/hooks/use-in-view";
 import { useIsMobile, usePrefersReducedMotion } from "@/lib/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +21,7 @@ export function GameSlider() {
   const dragMoved = useRef(0);
   const [paused, setPaused] = useState(!autoScroll);
   const [isGrabbing, setIsGrabbing] = useState(false);
+  const { ref: sectionRef, inView } = useInView("100px");
 
   const loopScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -43,7 +45,7 @@ export function GameSlider() {
   }, [autoScroll]);
 
   useEffect(() => {
-    if (!autoScroll) return;
+    if (!autoScroll || !inView) return;
     const el = scrollRef.current;
     if (!el || paused) return;
 
@@ -52,8 +54,13 @@ export function GameSlider() {
 
     const tick = () => {
       if (!running) return;
-      if (!paused && !isDragging.current && document.visibilityState === "visible") {
-        el.scrollLeft += 0.6;
+      if (
+        inView &&
+        !paused &&
+        !isDragging.current &&
+        document.visibilityState === "visible"
+      ) {
+        el.scrollLeft += 0.35;
         loopScroll();
       }
       raf = requestAnimationFrame(tick);
@@ -65,7 +72,7 @@ export function GameSlider() {
       running = false;
       cancelAnimationFrame(raf);
     };
-  }, [paused, loopScroll, autoScroll]);
+  }, [paused, loopScroll, autoScroll, inView]);
 
   function onPointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (!autoScroll) return;
@@ -123,7 +130,7 @@ export function GameSlider() {
   }
 
   return (
-    <section className="game-slider-wrap py-1" aria-label="Featured games slider">
+    <section ref={sectionRef} className="game-slider-wrap py-1" aria-label="Featured games slider">
       <div
         ref={scrollRef}
         className={cn(
@@ -151,7 +158,7 @@ export function GameSlider() {
             key={`${game.id}-${i}`}
             game={game}
             variant="slider"
-            eager={i < 5}
+            eager={i < 3}
             className={!autoScroll ? "snap-start" : undefined}
           />
         ))}

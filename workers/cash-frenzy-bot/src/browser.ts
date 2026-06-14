@@ -26,56 +26,37 @@ function launchOptions() {
   };
 }
 
-/** Pick the panel tab with User List open — avoid stale /userManagement 404 tabs. */
-async function isUsablePanelPage(page: Page): Promise<boolean> {
-  const url = page.url();
-  if (!url.includes(PANEL_HOST) || url.includes("about:")) return false;
-  if (/\/userList|\/userManagement/i.test(url)) return false;
-
-  const body = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
-  if (/404\s*not\s*found/i.test(body) && body.length < 200) return false;
-
-  return /backend/i.test(body) || /new account/i.test(body);
-}
-
-async function pageHasNewAccountButton(page: Page): Promise<boolean> {
-  for (const frame of page.frames()) {
-    const loc = frame.locator(".el-button, button").filter({ hasText: /new\s*account/i });
-    if ((await loc.count()) > 0) return true;
-  }
-  return false;
-}
-
+/** Pick the Cash Frenzy agent tab — never use /player/insert (that is only the create-form iframe). */
 async function findPanelPage(pages: Page[]): Promise<Page> {
-  for (const page of pages) {
-    if (!(await isUsablePanelPage(page))) continue;
-    await page.bringToFront().catch(() => {});
-    if (await pageHasNewAccountButton(page)) {
-      console.log("[cf] Using tab (User List):", page.url());
-      return page;
-    }
-  }
+  const usable = pages.filter((p) => {
+    const url = p.url();
+    if (!url.includes(PANEL_HOST)) return false;
+    if (/\/player\/insert/i.test(url)) return false;
+    return true;
+  });
 
-  for (const page of pages) {
-    if (await isUsablePanelPage(page)) {
-      console.log("[cf] Using tab:", page.url());
-      await page.bringToFront().catch(() => {});
-      return page;
-    }
-  }
-
-  for (const page of pages) {
+  for (const page of usable) {
     const url = page.url();
-    if (url.includes(PANEL_HOST) && !url.includes("about:") && !/\/userList|\/userManagement/i.test(url)) {
-      console.log("[cf] Using tab:", url);
+    if (url.includes("/player/index")) {
+      console.log("[cf] Using tab (User List):", url);
       await page.bringToFront();
       return page;
     }
   }
 
+  for (const page of usable) {
+    const url = page.url();
+    if (url.includes("about:")) continue;
+    const body = (await page.locator("body").innerText().catch(() => "")).replace(/\s+/g, " ");
+    if (/404\s*not\s*found/i.test(body) && body.length < 200) continue;
+    console.log("[cf] Using tab:", url);
+    await page.bringToFront();
+    return page;
+  }
+
   for (const page of pages) {
     const title = await page.title().catch(() => "");
-    if (/backend|management|vault/i.test(title)) {
+    if (/backend|management|frenzy/i.test(title)) {
       console.log("[cf] Using tab by title:", title);
       await page.bringToFront();
       return page;
@@ -150,7 +131,7 @@ export function vpnHint(error: unknown): string {
     return (
       `${msg}\n\n` +
       "VPN fix: connect VPN in the bot Chrome window, then retry.\n" +
-      "Run start-chrome-for-bot.bat → connect VPN → open the panel → start-bot.bat"
+      "Run start-chrome-for-bot.bat → connect VPN → open User List → start-bot.bat"
     );
   }
   return msg;

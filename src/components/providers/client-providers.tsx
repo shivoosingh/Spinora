@@ -1,44 +1,54 @@
 "use client";
 
-import { useEffect, useState, type ComponentType, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import { Toaster } from "sonner";
+import { MessageRealtimeProvider } from "@/components/chat/message-realtime-provider";
 import { createClient } from "@/lib/supabase/client";
 import { MessageRealtimeStubProvider } from "@/lib/chat/message-realtime-stub";
 
-/** Logged-in users load realtime immediately; guests defer until idle. */
-export function ClientProviders({ children }: { children: ReactNode }) {
-  const [Provider, setProvider] = useState<ComponentType<{ children: ReactNode }>>(
-    () => MessageRealtimeStubProvider
+const REALTIME_ROUTE_PREFIXES = ["/dashboard", "/admin", "/spin"];
+
+function needsRealtimeImmediately(pathname: string | null): boolean {
+  if (!pathname) return false;
+  return REALTIME_ROUTE_PREFIXES.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)
   );
+}
+
+export function ClientProviders({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const [loggedIn, setLoggedIn] = useState<boolean | null>(null);
 
   useEffect(() => {
     const supabase = createClient();
-    if (!supabase) return;
-
-    const loadRealtime = () => {
-      void import("@/components/chat/message-realtime-provider").then((mod) => {
-        setProvider(() => mod.MessageRealtimeProvider);
-      });
-    };
+    if (!supabase) {
+      setLoggedIn(false);
+      return;
+    }
 
     void supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        loadRealtime();
-        return;
-      }
-
-      if ("requestIdleCallback" in window) {
-        window.requestIdleCallback(loadRealtime, { timeout: 4000 });
-      } else {
-        setTimeout(loadRealtime, 3000);
-      }
+      setLoggedIn(!!session);
     });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setLoggedIn(!!session);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
+  const Provider =
+    loggedIn === false && !needsRealtimeImmediately(pathname)
+      ? MessageRealtimeStubProvider
+      : MessageRealtimeProvider;
+
   return (
-    <Provider>
-      {children}
+    <>
+      <Provider>{children}</Provider>
       <Toaster richColors closeButton position="top-center" />
-    </Provider>
+    </>
   );
 }

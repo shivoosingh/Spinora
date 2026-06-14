@@ -10,13 +10,26 @@ export {
 
 const NEAR_BOTTOM_PX = 96;
 
+function scrollToBottom(el: HTMLDivElement) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  });
+}
+
 /** Only pin to bottom when the user is already near the latest messages. */
 export function useChatAutoScroll(
   scrollRef: RefObject<HTMLDivElement | null>,
   messageCount: number,
-  messageFingerprint?: string
+  messageFingerprint?: string,
+  conversationKey?: string
 ) {
   const stickToBottomRef = useRef(true);
+
+  useEffect(() => {
+    stickToBottomRef.current = true;
+  }, [conversationKey]);
 
   const onScroll = useCallback(() => {
     const el = scrollRef.current;
@@ -30,10 +43,8 @@ export function useChatAutoScroll(
     if (!el || messageCount === 0) return;
     if (!stickToBottomRef.current) return;
 
-    requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-    });
-  }, [scrollRef, messageCount, messageFingerprint]);
+    scrollToBottom(el);
+  }, [scrollRef, messageCount, messageFingerprint, conversationKey]);
 
   return { onScroll };
 }

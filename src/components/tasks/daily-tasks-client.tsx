@@ -7,7 +7,7 @@ import { TaskCard } from "@/components/tasks/task-card";
 import { TASK_DEFINITIONS, TASK_FAQ, TASK_LEVELS } from "@/lib/tasks/definitions";
 import { getLevelUnlockInfo } from "@/lib/tasks/utils";
 import { claimLevelReward, type TaskBoardData } from "@/lib/actions/daily-tasks";
-import { WALLET_REFRESH_EVENT } from "@/components/wallet/wallet-card-loader";
+import { WALLET_REFRESH_EVENT } from "@/lib/wallet/use-live-wallet";
 import { cn } from "@/lib/utils";
 
 type Tab = "active" | "rewards" | "faq";

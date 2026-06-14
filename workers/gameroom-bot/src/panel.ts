@@ -655,16 +655,16 @@ export async function createAccount(
   page: Page,
   baseUsername: string,
   password: string,
-  variant: (base: string, attempt: number) => string
+  variant: (base: string, attempt: number) => string,
+  options?: { forceNewAccount?: boolean }
 ): Promise<{ username: string; password: string }> {
   for (let attempt = 0; attempt < 8; attempt++) {
     const username = variant(baseUsername, attempt);
     const pwd = passwordForAccount(username, password);
 
     if (await accountExists(page, username)) {
-      log("create", `"${username}" already on panel — completing job with this login`);
-      await dismissAllLayers(page);
-      return { username, password: pwd };
+      log("create", `"${username}" already on panel — trying next number`);
+      continue;
     }
 
     const outcome = await tryCreateOnce(page, username, pwd);

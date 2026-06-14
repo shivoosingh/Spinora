@@ -1,14 +1,24 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
-import { Search, MessageCircle, Menu } from "lucide-react";
+import { Search, Menu } from "lucide-react";
 import { AnimatedLogo } from "@/components/ui/animated-logo";
-import { NotificationDropdown } from "@/components/notifications/notification-dropdown";
-import { UserAccountMenu } from "@/components/layout/user-account-menu";
-import { UnreadBadge } from "@/components/ui/unread-badge";
-import { useUnreadMessages } from "@/hooks/use-unread-messages";
 import { createClient } from "@/lib/supabase/client";
+
+const NotificationDropdown = dynamic(
+  () =>
+    import("@/components/notifications/notification-dropdown").then(
+      (m) => m.NotificationDropdown
+    ),
+  { ssr: false, loading: () => null }
+);
+
+const UserAccountMenu = dynamic(
+  () => import("@/components/layout/user-account-menu").then((m) => m.UserAccountMenu),
+  { ssr: false, loading: () => <div className="hidden sm:block w-9 h-9 rounded-lg bg-white/5" aria-hidden /> }
+);
 
 interface HomeHeaderProps {
   onSearchClick: () => void;
@@ -18,7 +28,6 @@ interface HomeHeaderProps {
 
 export function HomeHeader({ onSearchClick, onMenuClick, assumeLoggedIn = false }: HomeHeaderProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(assumeLoggedIn);
-  const { count: unreadMessages } = useUnreadMessages();
 
   useEffect(() => {
     if (assumeLoggedIn) return;
@@ -78,6 +87,7 @@ export function HomeHeader({ onSearchClick, onMenuClick, assumeLoggedIn = false 
           <>
             <Link
               href="/dashboard/deposit"
+              prefetch={false}
               className="inline-flex px-2 sm:px-4 py-1.5 sm:py-2 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 text-gray-900 text-[10px] sm:text-sm font-bold hover:opacity-90 transition-opacity shrink-0 whitespace-nowrap"
             >
               Deposit
@@ -100,19 +110,6 @@ export function HomeHeader({ onSearchClick, onMenuClick, assumeLoggedIn = false 
             </Link>
           </>
         )}
-
-        <Link
-          href={isLoggedIn ? "/dashboard/messages" : "/support"}
-          className="relative flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-purple-600 text-white hover:bg-purple-500 transition-colors shrink-0"
-          aria-label="Messages and live chat support"
-        >
-          <MessageCircle className="h-4 w-4 sm:h-5 sm:w-5" />
-          {isLoggedIn && unreadMessages > 0 && (
-            <span className="absolute -top-1 -right-1">
-              <UnreadBadge count={unreadMessages} className="ring-2 ring-[#121212]" />
-            </span>
-          )}
-        </Link>
       </div>
     </header>
   );

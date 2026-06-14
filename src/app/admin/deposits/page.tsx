@@ -26,7 +26,8 @@ export default async function AdminDepositsPage({
   let query = supabase
     .from("deposit_requests")
     .select("*, user:profiles!deposit_requests_user_id_fkey(full_name, email)")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(100);
 
   if (status === "pending") {
     query = query.eq("status", "pending");

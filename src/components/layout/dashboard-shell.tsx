@@ -1,17 +1,16 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { AccountSidebar } from "@/components/layout/account-sidebar";
-import { DeferredWalletCardLoader } from "@/components/wallet/deferred-wallet-card-loader";
 import { AppShell } from "@/components/layout/app-shell";
 
 interface DashboardShellProps {
   children: React.ReactNode;
+  sidebar: ReactNode;
 }
 
-export function DashboardShell({ children }: DashboardShellProps) {
+export function DashboardShell({ children, sidebar }: DashboardShellProps) {
   const searchParams = useSearchParams();
 
   useEffect(() => {
@@ -21,14 +20,7 @@ export function DashboardShell({ children }: DashboardShellProps) {
   }, [searchParams]);
 
   return (
-    <AppShell
-      showTicker={false}
-      showFooter={false}
-      assumeLoggedIn
-      sidebar={
-        <AccountSidebar walletSlot={<DeferredWalletCardLoader />} />
-      }
-    >
+    <AppShell showTicker={false} showFooter={false} assumeLoggedIn sidebar={sidebar}>
       {children}
     </AppShell>
   );

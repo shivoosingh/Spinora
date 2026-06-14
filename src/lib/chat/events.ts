@@ -1,7 +1,10 @@
+import type { Message } from "@/types/database";
+
 export const CHAT_INCOMING_EVENT = "spinora:chat-incoming";
 
 export interface ChatIncomingDetail {
   conversationId: string;
+  message?: Message;
 }
 
 export const GAME_REQUEST_EVENT = "spinora:game-request-update";

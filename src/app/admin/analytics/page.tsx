@@ -13,23 +13,28 @@ export default async function AdminAnalyticsPage() {
     { count: totalRequests },
     { count: completedRequests },
     { count: totalReferrals },
-    { data: tierBreakdown },
+    { count: bronzeCount },
+    { count: silverCount },
+    { count: goldCount },
+    { count: platinumCount },
   ] = await Promise.all([
     supabase.from("profiles").select("*", { count: "exact", head: true }),
     supabase.from("profiles").select("*", { count: "exact", head: true }).gte("created_at", thirtyDaysAgo.toISOString()),
     supabase.from("game_requests").select("*", { count: "exact", head: true }),
     supabase.from("game_requests").select("*", { count: "exact", head: true }).eq("status", "completed"),
     supabase.from("referrals").select("*", { count: "exact", head: true }),
-    supabase.from("profiles").select("vip_tier"),
+    supabase.from("profiles").select("*", { count: "exact", head: true }).eq("vip_tier", "bronze"),
+    supabase.from("profiles").select("*", { count: "exact", head: true }).eq("vip_tier", "silver"),
+    supabase.from("profiles").select("*", { count: "exact", head: true }).eq("vip_tier", "gold"),
+    supabase.from("profiles").select("*", { count: "exact", head: true }).eq("vip_tier", "platinum"),
   ]);
 
-  const tiers = (tierBreakdown || []).reduce(
-    (acc, p) => {
-      acc[p.vip_tier] = (acc[p.vip_tier] || 0) + 1;
-      return acc;
-    },
-    {} as Record<string, number>
-  );
+  const tiers: Record<string, number> = {
+    bronze: bronzeCount || 0,
+    silver: silverCount || 0,
+    gold: goldCount || 0,
+    platinum: platinumCount || 0,
+  };
 
   const completionRate = totalRequests ? Math.round(((completedRequests || 0) / totalRequests) * 100) : 0;
 

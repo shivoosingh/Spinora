@@ -1,5 +1,5 @@
 import type { GameLoadJob, VegasBotResult } from "./types.js";
-import { buildVegasCredentials, usernameVariant } from "./credentials.js";
+import { planCreateAccount, variantFromPlan } from "../../shared/numbered-credentials.js";
 import { openBrowserSession, vpnHint } from "./browser.js";
 import {
   loginToPanel,
@@ -10,19 +10,6 @@ import {
 } from "./vegas-panel.js";
 import { log, screenshot } from "./panel-utils.js";
 
-function credentialsForJob(job: GameLoadJob): { username: string; password: string } {
-  // User picked their own login → honour it (uniqueness handled separately).
-  const customUser = job.game_username?.trim();
-  if (customUser) {
-    const password = job.game_password?.trim() || customUser;
-    return { username: customUser.slice(0, 13), password };
-  }
-  return buildVegasCredentials({
-    full_name: job.requester_name,
-    email: job.requester_email,
-  });
-}
-
 export async function runVegasJob(job: GameLoadJob): Promise<VegasBotResult> {
   const session = await openBrowserSession();
   const { page, close } = session;
@@ -31,17 +18,13 @@ export async function runVegasJob(job: GameLoadJob): Promise<VegasBotResult> {
     await loginToPanel(page);
 
     if (job.load_type === "create_account" || job.load_type === "new_account") {
-      const requested = credentialsForJob(job);
+      const plan = planCreateAccount(job);
       log(
         "create-user",
-        `${requested.username} (requester: ${job.requester_name ?? job.requester_email ?? job.user_id})`
+        `${plan.stem} from #${plan.startNum} (requester: ${job.requester_name ?? job.requester_email ?? job.user_id})`
       );
-      const creds = await createAccount(
-        page,
-        requested.username,
-        requested.password,
-        usernameVariant
-      );
+      const password = plan.preferredPassword ?? "";
+      const creds = await createAccount(page, plan.stem, password, variantFromPlan(plan));
       return creds;
     }
 

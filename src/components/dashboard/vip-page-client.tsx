@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
@@ -8,42 +7,19 @@ import { VIP_TIERS } from "@/lib/constants";
 import { Crown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DashboardPageHeader } from "@/components/dashboard/dashboard-page-header";
-import { DashboardRouteLoading } from "@/components/dashboard/dashboard-route-loading";
-import { useDashboardSession } from "@/lib/dashboard/use-dashboard-session";
+import { useDashboardProfile } from "@/lib/dashboard/dashboard-profile-context";
 
 export function VipPageClient() {
-  const { supabase, userId, ready } = useDashboardSession();
-  const [profile, setProfile] = useState<{ vip_tier: string; vip_points: number } | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const dashboardProfile = useDashboardProfile();
+  const profile = dashboardProfile?.profile;
 
-  useEffect(() => {
-    if (!ready || !supabase || !userId) return;
-
-    let cancelled = false;
-    void supabase
-      .from("profiles")
-      .select("vip_tier, vip_points")
-      .eq("id", userId)
-      .single()
-      .then(({ data }) => {
-        if (!cancelled) {
-          setProfile(data);
-          setLoaded(true);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [ready, supabase, userId]);
-
-  if (!loaded) {
-    return <DashboardRouteLoading cards={2} />;
+  if (!profile) {
+    return null;
   }
 
-  const currentIndex = VIP_TIERS.findIndex((t) => t.id === profile?.vip_tier);
+  const currentIndex = VIP_TIERS.findIndex((t) => t.id === profile.vip_tier);
   const nextTier = VIP_TIERS[currentIndex + 1];
-  const progress = nextTier ? ((profile?.vip_points || 0) / nextTier.minPoints) * 100 : 100;
+  const progress = nextTier ? (profile.vip_points / nextTier.minPoints) * 100 : 100;
 
   return (
     <div>
@@ -61,14 +37,14 @@ export function VipPageClient() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <p className="text-sm text-muted-foreground">Current Tier</p>
-              <p className="text-3xl font-bold capitalize">{profile?.vip_tier}</p>
+              <p className="text-3xl font-bold capitalize">{profile.vip_tier}</p>
             </div>
-            <Badge className="text-lg px-4 py-2">{profile?.vip_points || 0} pts</Badge>
+            <Badge className="text-lg px-4 py-2">{profile.vip_points} pts</Badge>
           </div>
           <Progress value={Math.min(progress, 100)} className="mb-2" />
           {nextTier && (
             <p className="text-sm text-muted-foreground">
-              {nextTier.minPoints - (profile?.vip_points || 0)} points until {nextTier.name}
+              {nextTier.minPoints - profile.vip_points} points until {nextTier.name}
             </p>
           )}
         </CardContent>
@@ -76,8 +52,8 @@ export function VipPageClient() {
 
       <div className="grid sm:grid-cols-2 gap-4">
         {VIP_TIERS.map((tier) => {
-          const isCurrent = tier.id === profile?.vip_tier;
-          const isUnlocked = (profile?.vip_points || 0) >= tier.minPoints;
+          const isCurrent = tier.id === profile.vip_tier;
+          const isUnlocked = profile.vip_points >= tier.minPoints;
           return (
             <Card key={tier.id} className={cn(isCurrent && "ring-2 ring-primary")}>
               <CardHeader>

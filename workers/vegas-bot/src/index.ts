@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
+import { enrichGameLoadJob } from "../../shared/enrich-game-load-job.js";
 import { runVegasJob } from "./vegas-bot.js";
 import type { GameLoadJob } from "./types.js";
 
@@ -45,17 +46,7 @@ async function processOne(supabase: ReturnType<typeof createAdminSupabase>) {
 
   console.log(`[vegas-bot] Processing job ${job.id} — $${job.amount} (${job.load_type})`);
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, email")
-    .eq("id", job.user_id)
-    .single();
-
-  const enrichedJob: GameLoadJob = {
-    ...job,
-    requester_name: profile?.full_name ?? null,
-    requester_email: profile?.email ?? null,
-  };
+  const enrichedJob = await enrichGameLoadJob(supabase, job as GameLoadJob);
 
   try {
     const result = await runVegasJob(enrichedJob);

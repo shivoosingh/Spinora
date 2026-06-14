@@ -11,14 +11,33 @@ import { AdminWalletGrant } from "@/components/admin/admin-wallet-grant";
 import { WalletCard } from "@/components/wallet/wallet-card";
 import { formatDate } from "@/lib/utils";
 import { MessageCircle, Search } from "lucide-react";
-import type { Profile } from "@/types/database";
+
+export interface AdminUserRow {
+  id: string;
+  full_name: string | null;
+  email: string;
+  phone: string | null;
+  whatsapp: string | null;
+  role: string;
+  is_suspended: boolean;
+  vip_tier: string;
+  vip_points: number;
+  wallet_balance: number | null;
+  bonus_wallet: number | null;
+  cashout_wallet: number | null;
+  bonus_redeem_wallet: number | null;
+  created_at: string;
+}
 
 interface AdminUsersListProps {
-  users: Profile[];
+  users: AdminUserRow[];
 }
+
+const PAGE_SIZE = 30;
 
 export function AdminUsersList({ users }: AdminUsersListProps) {
   const [query, setQuery] = useState("");
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -32,13 +51,19 @@ export function AdminUsersList({ users }: AdminUsersListProps) {
     );
   }, [users, query]);
 
+  const visible = filtered.slice(0, visibleCount);
+  const hasMore = visibleCount < filtered.length;
+
   return (
     <div className="space-y-4">
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
         <Input
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setVisibleCount(PAGE_SIZE);
+          }}
           placeholder="Search users by name, email, or phone..."
           className="pl-9"
         />
@@ -47,10 +72,11 @@ export function AdminUsersList({ users }: AdminUsersListProps) {
       <p className="text-sm text-muted-foreground">
         {filtered.length} user{filtered.length === 1 ? "" : "s"}
         {query.trim() ? " found" : " total"}
+        {filtered.length > PAGE_SIZE && !query.trim() ? " · showing newest first" : ""}
       </p>
 
       <div className="space-y-3">
-        {filtered.map((user) => (
+        {visible.map((user) => (
           <Card key={user.id}>
             <CardContent className="p-4 flex flex-col gap-4">
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -95,6 +121,17 @@ export function AdminUsersList({ users }: AdminUsersListProps) {
           <Card className="p-8 text-center">
             <p className="text-sm text-muted-foreground">No users match your search.</p>
           </Card>
+        )}
+
+        {hasMore && (
+          <div className="flex justify-center pt-2">
+            <Button
+              variant="outline"
+              onClick={() => setVisibleCount((count) => count + PAGE_SIZE)}
+            >
+              Load more users ({filtered.length - visibleCount} remaining)
+            </Button>
+          </div>
         )}
       </div>
     </div>

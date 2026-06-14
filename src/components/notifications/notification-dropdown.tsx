@@ -90,28 +90,55 @@ export function NotificationDropdown({
   useEffect(() => {
     if (!userId) return;
 
+    let cancelled = false;
+    let idleId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
     const supabase = createClient();
     if (!supabase) return;
 
-    const channel = supabase
-      .channel(`notifications-${userId}-${createClientId()}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "notifications",
-          filter: `user_id=eq.${userId}`,
-        },
-        (payload) => {
-          void playMessageNotificationSound();
-          fetchNotifications();
-        }
-      )
-      .subscribe();
+    const subscribe = () => {
+      if (cancelled) return;
+
+      const channel = supabase
+        .channel(`notifications-${userId}-${createClientId()}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${userId}`,
+          },
+          () => {
+            void playMessageNotificationSound();
+            fetchNotifications();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    };
+
+    let unsubscribe: (() => void) | undefined;
+
+    const start = () => {
+      unsubscribe = subscribe();
+    };
+
+    if ("requestIdleCallback" in window) {
+      idleId = window.requestIdleCallback(start, { timeout: 6000 });
+    } else {
+      timeoutId = setTimeout(start, 3000);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      cancelled = true;
+      if (idleId !== undefined) window.cancelIdleCallback(idleId);
+      if (timeoutId) clearTimeout(timeoutId);
+      unsubscribe?.();
     };
   }, [userId, fetchNotifications]);
 

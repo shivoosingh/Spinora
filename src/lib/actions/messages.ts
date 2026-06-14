@@ -3,14 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { notifyAdminOfCustomerMessage } from "@/lib/telegram/notify-admin-message";
+import { messagePreview } from "@/lib/chat/message-preview";
 import type { Message } from "@/types/database";
-
-function messagePreview(msg: Pick<Message, "content" | "attachment_type">): string {
-  if (msg.content.trim()) return msg.content;
-  if (msg.attachment_type === "image") return "Sent an image";
-  if (msg.attachment_type === "file") return "Sent a file";
-  return "Sent a message";
-}
 
 export interface ConversationPreview {
   id: string;
@@ -318,6 +312,8 @@ export async function initUserMessagesInbox(): Promise<{
   };
 }
 
+export type UserMessagesInboxInitialData = Awaited<ReturnType<typeof initUserMessagesInbox>>;
+
 export interface AdminConversationUnread {
   conversationId: string;
   unreadCount: number;
@@ -383,31 +379,45 @@ export async function getAdminConversationUnreads(): Promise<AdminConversationUn
 
   if (!conversations?.length) return [];
 
-  const results: AdminConversationUnread[] = [];
+  const convIds = conversations.map((conv) => conv.id);
 
-  for (const conv of conversations) {
-    const { data: lastMsgs } = await supabase
+  const [{ data: unreadRows }, { data: recentMessages }] = await Promise.all([
+    supabase
       .from("messages")
-      .select("content, attachment_type, created_at")
-      .eq("conversation_id", conv.id)
-      .order("created_at", { ascending: false })
-      .limit(1);
-
-    const { count: unreadCount } = await supabase
-      .from("messages")
-      .select("*", { count: "exact", head: true })
-      .eq("conversation_id", conv.id)
+      .select("conversation_id")
+      .in("conversation_id", convIds)
       .eq("is_read", false)
-      .neq("sender_id", user.id);
+      .neq("sender_id", user.id),
+    supabase
+      .from("messages")
+      .select("conversation_id, content, attachment_type, created_at")
+      .in("conversation_id", convIds)
+      .order("created_at", { ascending: false })
+      .limit(Math.min(convIds.length * 4, 800)),
+  ]);
 
-    const last = lastMsgs?.[0];
-    results.push({
-      conversationId: conv.id,
-      unreadCount: unreadCount ?? 0,
-      lastMessage: last ? messagePreview(last) : "No messages yet",
-      lastMessageAt: last?.created_at ?? conv.updated_at,
-    });
+  const unreadByConv = new Map<string, number>();
+  for (const row of unreadRows ?? []) {
+    unreadByConv.set(row.conversation_id, (unreadByConv.get(row.conversation_id) ?? 0) + 1);
   }
 
-  return results;
+  const lastByConv = new Map<
+    string,
+    Pick<Message, "content" | "attachment_type" | "created_at">
+  >();
+  for (const msg of recentMessages ?? []) {
+    if (!lastByConv.has(msg.conversation_id)) {
+      lastByConv.set(msg.conversation_id, msg);
+    }
+  }
+
+  return conversations.map((conv) => {
+    const last = lastByConv.get(conv.id);
+    return {
+      conversationId: conv.id,
+      unreadCount: unreadByConv.get(conv.id) ?? 0,
+      lastMessage: last ? messagePreview(last) : "No messages yet",
+      lastMessageAt: last?.created_at ?? conv.updated_at,
+    };
+  });
 }

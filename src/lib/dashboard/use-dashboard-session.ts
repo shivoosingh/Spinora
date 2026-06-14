@@ -2,15 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { useDashboardProfile } from "@/lib/dashboard/dashboard-profile-context";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/** Session from local storage — no network round-trip on navigation */
+/** Session from layout context or local storage — no extra network on dashboard navigation */
 export function useDashboardSession() {
+  const dashboardProfile = useDashboardProfile();
   const supabase = useMemo(() => createClient(), []);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [ready, setReady] = useState(false);
+  const [userId, setUserId] = useState<string | null>(dashboardProfile?.userId ?? null);
+  const [ready, setReady] = useState(Boolean(dashboardProfile));
 
   useEffect(() => {
+    if (dashboardProfile) {
+      setUserId(dashboardProfile.userId);
+      setReady(true);
+      return;
+    }
+
     if (!supabase) {
       setReady(true);
       return;
@@ -35,7 +43,7 @@ export function useDashboardSession() {
       cancelled = true;
       subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, [supabase, dashboardProfile]);
 
   return { supabase: supabase as SupabaseClient | null, userId, ready };
 }

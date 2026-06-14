@@ -44,26 +44,36 @@ export function UserAccountMenu({ compact = false }: { compact?: boolean }) {
   const { count: unreadMessages } = useUnreadMessages();
 
   useEffect(() => {
+    if (!open) return;
+
+    let cancelled = false;
+
     async function loadUser() {
       const supabase = createClient();
       if (!supabase) return;
       const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
+        data: { session },
+      } = await supabase.auth.getSession();
+      const user = session?.user;
+      if (!user || cancelled) return;
 
       setEmail(user.email ?? "");
+      setName(user.email?.split("@")[0] ?? "Account");
+
       const { data: profile } = await supabase
         .from("profiles")
         .select("full_name")
         .eq("id", user.id)
         .single();
 
-      if (profile?.full_name) setName(profile.full_name);
-      else if (user.email) setName(user.email.split("@")[0]);
+      if (!cancelled && profile?.full_name) setName(profile.full_name);
     }
-    loadUser();
-  }, []);
+
+    void loadUser();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;

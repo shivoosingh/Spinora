@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
-import { OrganizationSchema, WebsiteSchema } from "@/lib/seo/json-ld";
+import { OrganizationSchema, WebsiteSchema, HomeGamesItemListSchema, HomeFaqSchema } from "@/lib/seo/json-ld";
 import { homeMetadata } from "@/lib/seo/metadata";
 import { ClientProviders } from "@/components/providers/client-providers";
 import "./globals.css";
@@ -27,6 +27,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <OrganizationSchema />
         <WebsiteSchema />
+        <HomeGamesItemListSchema />
+        <HomeFaqSchema />
         <link rel="icon" href="/logo.webp" />
         <link rel="preload" href="/logo.webp" as="image" type="image/webp" />
       </head>

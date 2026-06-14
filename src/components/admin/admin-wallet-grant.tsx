@@ -23,40 +23,47 @@ export function AdminWalletGrant({ userId }: AdminWalletGrantProps) {
   const router = useRouter();
 
   const label = walletTypeLabel(walletType);
+  const parsedAmount = parseFloat(amount);
 
   async function handleGrant() {
-    const value = parseFloat(amount);
-    if (!value || value <= 0) {
+    if (!parsedAmount || parsedAmount <= 0) {
       toast.error("Enter a valid amount");
       return;
     }
     setLoading("grant");
-    const result = await adminGrantWallet(userId, value, walletType);
+    const result = await adminGrantWallet(userId, parsedAmount, walletType);
     if (result.error) toast.error(result.error);
-    else toast.success(`Added $${value} to ${label}`);
+    else toast.success(`Added $${parsedAmount} to ${label}`);
     router.refresh();
     setLoading(null);
   }
 
-  async function handleDeduct() {
-    const value = parseFloat(amount);
-    if (!value || value <= 0) {
-      toast.error("Enter a valid amount to remove");
+  async function handleResetByAmount() {
+    if (!parsedAmount || parsedAmount <= 0) {
+      toast.error("Enter how much to reset from the wallet");
       return;
     }
-    setLoading("deduct");
-    const result = await adminDeductWallet(userId, value, walletType);
+    setLoading("reset");
+    const result = await adminDeductWallet(
+      userId,
+      parsedAmount,
+      walletType,
+      `Admin reset $${parsedAmount} from ${walletType} wallet`
+    );
     if (result.error) toast.error(result.error);
-    else toast.success(`Removed $${value} from ${label}`);
+    else toast.success(`Reset $${parsedAmount} from ${label}`);
     router.refresh();
     setLoading(null);
   }
 
-  async function handleReset() {
-    setLoading("reset");
+  async function handleClearAll() {
+    const ok = window.confirm(`Clear entire ${label} to $0? This removes the full balance.`);
+    if (!ok) return;
+
+    setLoading("clear");
     const result = await adminResetWallet(userId, walletType);
     if (result.error) toast.error(result.error);
-    else toast.success(`${label} reset to $0`);
+    else toast.success(`${label} cleared to $0`);
     router.refresh();
     setLoading(null);
   }
@@ -91,15 +98,21 @@ export function AdminWalletGrant({ userId }: AdminWalletGrantProps) {
         <Button size="sm" variant="outline" onClick={handleGrant} disabled={!!loading}>
           {loading === "grant" ? "..." : "Grant $"}
         </Button>
-        <Button size="sm" variant="secondary" onClick={handleDeduct} disabled={!!loading}>
-          {loading === "deduct" ? "..." : "Remove $"}
+        <Button size="sm" variant="destructive" onClick={handleResetByAmount} disabled={!!loading}>
+          {loading === "reset" ? "..." : parsedAmount > 0 ? `Reset $${parsedAmount}` : "Reset $"}
         </Button>
-        <Button size="sm" variant="destructive" onClick={handleReset} disabled={!!loading}>
-          {loading === "reset" ? "..." : "Reset to $0"}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleClearAll}
+          disabled={!!loading}
+          className="border-destructive/50 text-destructive hover:bg-destructive/10"
+        >
+          {loading === "clear" ? "..." : "Clear all ($0)"}
         </Button>
       </div>
       <p className="text-[10px] text-muted-foreground">
-        Use Remove $ for partial deduction, or Reset to $0 after the user has played their balance.
+        Reset $ removes the entered amount from the wallet. Clear all ($0) wipes the full balance.
       </p>
     </div>
   );

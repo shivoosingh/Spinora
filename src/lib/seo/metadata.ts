@@ -7,6 +7,8 @@ interface PageSEO {
   keywords: string[];
   path: string;
   ogImage?: string;
+  /** Overrides the default "{title} | Spinora" document title when set */
+  documentTitle?: string;
 }
 
 export function createMetadata({
@@ -15,8 +17,11 @@ export function createMetadata({
   keywords,
   path,
   ogImage = "/logo.webp",
+  documentTitle,
 }: PageSEO): Metadata {
-  const fullTitle = title === SITE_NAME ? `${SITE_NAME} | Premium Gaming Support Platform` : `${title} | ${SITE_NAME}`;
+  const fullTitle =
+    documentTitle ??
+    (title === SITE_NAME ? `${SITE_NAME} | Premium Gaming Support Platform` : `${title} | ${SITE_NAME}`);
   const url = `${SITE_URL}${path}`;
 
   return {
@@ -53,17 +58,26 @@ export function createMetadata({
 
 export const homeMetadata = createMetadata({
   title: SITE_NAME,
-  description: SITE_DESCRIPTION,
+  documentTitle: "Spinora | Juwa Casino, Slot Games & Fish Games",
+  description:
+    "Play Juwa casino, Game Vault, Fire Kirin, Panda Master, and top slot games on Spinora. Create your game account in minutes, claim deposit bonuses, earn VIP rewards, and get 24/7 live chat support.",
   keywords: [
     "Spinora",
-    "gaming platform",
-    "game accounts",
-    "premium gaming support",
-    "VIP gaming rewards",
-    "online gaming",
+    "juwa casino",
+    "juwa 777",
+    "juwa slots",
+    "slot games",
+    "fish games",
+    "game vault casino",
+    "sweepstakes casino",
+    "online casino games",
+    "mobile casino",
     "fire kirin",
-    "juwa",
     "panda master",
+    "orion stars",
+    "vegas sweeps",
+    "game accounts",
+    "VIP gaming rewards",
   ],
   path: "/",
 });

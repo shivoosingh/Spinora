@@ -1,5 +1,10 @@
 import "dotenv/config";
 import { createClient } from "@supabase/supabase-js";
+import { enrichGameLoadJob } from "../../shared/enrich-game-load-job.js";
+import {
+  countActiveGameLoads,
+  healStaleGameLoadsForSlug,
+} from "../../shared/heal-stale-game-loads.js";
 import { runJob } from "./bot.js";
 import type { GameLoadJob } from "./types.js";
 
@@ -16,6 +21,16 @@ function createAdminSupabase() {
 }
 
 async function claimNext(supabase: ReturnType<typeof createAdminSupabase>) {
+  const healed = await healStaleGameLoadsForSlug(supabase, GAME_SLUG, {
+    staleMinutes: 20,
+    requeueMinutes: 2,
+  });
+  if (healed.failed > 0 || healed.requeued > 0) {
+    console.log(
+      `[cash-frenzy-bot] Queue heal: ${healed.requeued} re-queued, ${healed.failed} timed out`
+    );
+  }
+
   const { data, error } = await supabase.rpc("claim_next_game_load", { p_game_slug: GAME_SLUG });
   if (error) throw error;
   const row = Array.isArray(data) ? data[0] : data;
@@ -45,17 +60,7 @@ async function processOne(supabase: ReturnType<typeof createAdminSupabase>) {
 
   console.log(`[cash-frenzy-bot] Processing job ${job.id} — $${job.amount} (${job.load_type})`);
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("full_name, email")
-    .eq("id", job.user_id)
-    .single();
-
-  const enrichedJob: GameLoadJob = {
-    ...job,
-    requester_name: profile?.full_name ?? null,
-    requester_email: profile?.email ?? null,
-  };
+  const enrichedJob = await enrichGameLoadJob(supabase, job as GameLoadJob);
 
   try {
     const result = await runJob(enrichedJob);
@@ -117,7 +122,15 @@ async function main() {
     try {
       const handled = await processOne(supabase);
       if (once) break;
-      if (!handled) await new Promise((r) => setTimeout(r, POLL_MS));
+      if (!handled) {
+        const counts = await countActiveGameLoads(supabase, GAME_SLUG);
+        if (counts.processing > 0 && counts.pending === 0) {
+          console.log(
+            `[cash-frenzy-bot] Waiting — ${counts.processing} job(s) processing, 0 pending (healing stale every poll)`
+          );
+        }
+        await new Promise((r) => setTimeout(r, POLL_MS));
+      }
     } catch (err) {
       console.error("[cash-frenzy-bot] Poll error (continuing):", err);
       if (once) break;

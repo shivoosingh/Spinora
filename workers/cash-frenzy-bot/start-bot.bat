@@ -10,7 +10,7 @@ echo.
 echo   BEFORE this works you need:
 echo     [x] start-chrome-for-bot.bat was run
 echo     [x] VPN is ON in that Chrome window (if the panel needs it)
-echo     [x] https://agentserver.cashfrenzy777.com is LOGGED IN with User List open
+echo     [x] https://agentserver.cashfrenzy777.com/admin/player/index is LOGGED IN (User List)
 echo.
 echo ============================================================
 echo.
@@ -24,5 +24,14 @@ if errorlevel 1 (
   exit /b 1
 )
 
-npm start
+echo  Chrome detected on port 9229. Connecting bot to that window...
+echo.
+set CASHFRENZY_CDP_URL=http://127.0.0.1:9229
+set CASHFRENZY_HEADLESS=false
+call npm start
+
+echo.
+echo ============================================================
+echo   Bot stopped. Read any error above.
+echo ============================================================
 pause

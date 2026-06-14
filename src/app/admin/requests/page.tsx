@@ -24,7 +24,8 @@ export default async function AdminRequestsPage({
   let query = supabase
     .from("game_requests")
     .select("*, user:profiles!game_requests_user_id_fkey(full_name, email)")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(100);
 
   if (status === "pending") {
     query = query.eq("status", "pending");

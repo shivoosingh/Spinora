@@ -4,7 +4,7 @@ import { StarRating } from "@/components/reviews/star-rating";
 import { getReviews, getReviewStats } from "@/lib/actions/reviews";
 
 export default async function AdminReviewsPage() {
-  const [reviews, stats] = await Promise.all([getReviews(200), getReviewStats()]);
+  const [reviews, stats] = await Promise.all([getReviews(100), getReviewStats()]);
 
   const likedFirst = [...reviews].sort((a, b) => {
     if (a.admin_liked !== b.admin_liked) return a.admin_liked ? -1 : 1;

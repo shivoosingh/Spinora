@@ -10,8 +10,10 @@ export interface GameLoadJob {
   game_password?: string | null;
   redeem_all?: boolean;
   status: string;
+  admin_notes?: string | null;
   requester_name?: string | null;
   requester_email?: string | null;
+  prior_game_username?: string | null;
 }
 
 export interface BotResult {

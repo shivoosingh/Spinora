@@ -1,81 +1,30 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
 import { WalletCard } from "@/components/wallet/wallet-card";
-import { getMyWallet, type WalletBalance } from "@/lib/actions/wallet";
-import { createClient } from "@/lib/supabase/client";
+import type { WalletBalance } from "@/lib/actions/wallet";
 import { cn } from "@/lib/utils";
+import { useLiveWallet, WALLET_REFRESH_EVENT } from "@/lib/wallet/use-live-wallet";
 
-/** Other components can trigger an immediate wallet refresh: window.dispatchEvent(new Event(WALLET_REFRESH_EVENT)) */
-export const WALLET_REFRESH_EVENT = "wallet:refresh";
+export { WALLET_REFRESH_EVENT };
 
 interface WalletCardLoaderProps {
   className?: string;
   refreshKey?: number;
+  /** Preloaded from server layout — skips the first client fetch */
+  initialWallet?: WalletBalance;
 }
 
-export function WalletCardLoader({ className, refreshKey = 0 }: WalletCardLoaderProps) {
-  const [wallet, setWallet] = useState<WalletBalance | null>(null);
-  const [hidden, setHidden] = useState(false);
-
-  const load = useCallback(async () => {
-    const result = await getMyWallet();
-    if ("error" in result) {
-      setHidden(true);
-      return;
-    }
-    setWallet(result);
-    setHidden(false);
-  }, []);
+export function WalletCardLoader({
+  className,
+  refreshKey = 0,
+  initialWallet,
+}: WalletCardLoaderProps) {
+  const { wallet, hidden, refresh } = useLiveWallet(initialWallet ?? null);
 
   useEffect(() => {
-    load();
-  }, [load, refreshKey]);
-
-  // Poll while the tab is visible + refresh on focus/visibility/custom event.
-  useEffect(() => {
-    const refreshIfVisible = () => {
-      if (document.visibilityState === "visible") load();
-    };
-    const interval = setInterval(refreshIfVisible, 8_000);
-    document.addEventListener("visibilitychange", refreshIfVisible);
-    window.addEventListener("focus", refreshIfVisible);
-    window.addEventListener(WALLET_REFRESH_EVENT, load);
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener("visibilitychange", refreshIfVisible);
-      window.removeEventListener("focus", refreshIfVisible);
-      window.removeEventListener(WALLET_REFRESH_EVENT, load);
-    };
-  }, [load]);
-
-  // Instant update via Supabase realtime when the profile row changes.
-  useEffect(() => {
-    const supabase = createClient();
-    if (!supabase) return;
-
-    let cancelled = false;
-    let channel: ReturnType<typeof supabase.channel> | null = null;
-
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      const uid = data.user?.id;
-      if (!uid || cancelled) return;
-      channel = supabase
-        .channel(`wallet-${uid}`)
-        .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${uid}` },
-          () => load()
-        )
-        .subscribe();
-    })();
-
-    return () => {
-      cancelled = true;
-      if (channel) supabase.removeChannel(channel);
-    };
-  }, [load]);
+    if (refreshKey > 0) void refresh();
+  }, [refreshKey, refresh]);
 
   if (hidden) return null;
 

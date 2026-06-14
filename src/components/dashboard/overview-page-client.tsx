@@ -11,6 +11,7 @@ import { DashboardPageHeader } from "@/components/dashboard/dashboard-page-heade
 import { DashboardRouteLoading } from "@/components/dashboard/dashboard-route-loading";
 import { ReviewsPreviewClient } from "@/components/dashboard/reviews-preview-client";
 import { useDashboardSession } from "@/lib/dashboard/use-dashboard-session";
+import { useDashboardProfile } from "@/lib/dashboard/dashboard-profile-context";
 import { VIP_TIERS } from "@/lib/constants";
 
 interface OverviewStats {
@@ -24,8 +25,20 @@ interface OverviewStats {
 }
 
 export function OverviewPageClient() {
+  const dashboardProfile = useDashboardProfile();
   const { supabase, userId, ready } = useDashboardSession();
-  const [stats, setStats] = useState<OverviewStats | null>(null);
+  const [stats, setStats] = useState<OverviewStats | null>(() => {
+    if (!dashboardProfile) return null;
+    return {
+      tasksCompleted: 0,
+      referralCount: 0,
+      notifCount: 0,
+      reviewCount: 0,
+      vipTier: dashboardProfile.profile.vip_tier,
+      vipPoints: dashboardProfile.profile.vip_points,
+      fullName: dashboardProfile.profile.full_name,
+    };
+  });
 
   useEffect(() => {
     if (!ready || !supabase || !userId) return;
@@ -48,29 +61,23 @@ export function OverviewPageClient() {
         .eq("user_id", userId)
         .eq("is_read", false),
       supabase.from("reviews").select("*", { count: "exact", head: true }),
-      supabase
-        .from("profiles")
-        .select("vip_tier, vip_points, full_name")
-        .eq("id", userId)
-        .single(),
-    ]).then(([reqRes, refRes, notifRes, reviewRes, profileRes]) => {
+    ]).then(([reqRes, refRes, notifRes, reviewRes]) => {
       if (cancelled) return;
-      const profile = profileRes.data;
-      setStats({
+      setStats((prev) => ({
         tasksCompleted: reqRes.count ?? 0,
         referralCount: refRes.count ?? 0,
         notifCount: notifRes.count ?? 0,
         reviewCount: reviewRes.count ?? 0,
-        vipTier: profile?.vip_tier ?? "bronze",
-        vipPoints: profile?.vip_points ?? 0,
-        fullName: profile?.full_name ?? null,
-      });
+        vipTier: prev?.vipTier ?? dashboardProfile?.profile.vip_tier ?? "bronze",
+        vipPoints: prev?.vipPoints ?? dashboardProfile?.profile.vip_points ?? 0,
+        fullName: prev?.fullName ?? dashboardProfile?.profile.full_name ?? null,
+      }));
     });
 
     return () => {
       cancelled = true;
     };
-  }, [ready, supabase, userId]);
+  }, [ready, supabase, userId, dashboardProfile]);
 
   if (!stats) {
     return <DashboardRouteLoading cards={4} />;
@@ -112,7 +119,7 @@ export function OverviewPageClient() {
             </Card>
           );
           return stat.href ? (
-            <Link key={stat.label} href={stat.href} prefetch>
+            <Link key={stat.label} href={stat.href} prefetch={false}>
               {inner}
             </Link>
           ) : (
@@ -148,22 +155,22 @@ export function OverviewPageClient() {
           </CardHeader>
           <CardContent className="flex flex-wrap gap-3">
             <Button asChild>
-              <Link href="/dashboard/tasks" prefetch>
+              <Link href="/dashboard/tasks" prefetch={false}>
                 Open Daily Tasks
               </Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/dashboard/referrals" prefetch>
+              <Link href="/dashboard/referrals" prefetch={false}>
                 Share Referral
               </Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/dashboard/messages" prefetch>
+              <Link href="/dashboard/messages" prefetch={false}>
                 Open Messages
               </Link>
             </Button>
             <Button variant="outline" asChild>
-              <Link href="/dashboard/reviews" prefetch>
+              <Link href="/dashboard/reviews" prefetch={false}>
                 Write a Review
               </Link>
             </Button>

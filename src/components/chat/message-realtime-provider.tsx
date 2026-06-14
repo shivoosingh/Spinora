@@ -8,7 +8,6 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Headphones, MessageCircle, User, X, Gamepad2, CheckCircle, Target, Banknote } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -31,7 +30,8 @@ import {
 import { getDepositMethod } from "@/lib/payments/methods";
 import type { DepositPaymentMethodId } from "@/lib/payments/methods";
 import { getTaskById } from "@/lib/tasks/definitions";
-import { subscribeToMessageInserts } from "@/lib/chat/subscribe-messages";
+import { subscribeToConversationInserts, subscribeToMessageInserts } from "@/lib/chat/subscribe-messages";
+import { UserQuickChat } from "@/components/chat/user-quick-chat";
 import {
   MessageRealtimeContext,
 } from "@/lib/chat/message-realtime-context";
@@ -41,6 +41,9 @@ import {
   resumeMessageNotificationAudio,
   unlockMessageNotificationSound,
 } from "@/lib/chat/message-notification-sound";
+import { ensureUserConversation } from "@/lib/actions/messages";
+import { ensureUserConversationClient } from "@/lib/chat/ensure-user-conversation-client";
+import { messagePreview } from "@/lib/chat/message-preview";
 import type { GameRequest, Message } from "@/types/database";
 import type { TaskSubmission } from "@/lib/tasks/types";
 
@@ -81,13 +84,6 @@ function isOnChatInboxPage(path: string | null, adminView: boolean): boolean {
   return Boolean(path?.startsWith("/dashboard/messages"));
 }
 
-function messagePreview(msg: Pick<Message, "content" | "attachment_type">): string {
-  if (msg.content.trim()) return msg.content;
-  if (msg.attachment_type === "image") return "Sent an image";
-  if (msg.attachment_type === "file") return "Sent a file";
-  return "Sent you a message";
-}
-
 export function MessageRealtimeProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -95,6 +91,9 @@ export function MessageRealtimeProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [popup, setPopup] = useState<ActivityPopup | null>(null);
+  const [quickChatOpen, setQuickChatOpen] = useState(false);
+  const [quickChatConvId, setQuickChatConvId] = useState<string | null>(null);
+  const [activeUserId, setActiveUserId] = useState<string | null>(null);
   const [conversationIds, setConversationIds] = useState<string[]>([]);
   const userIdRef = useRef<string | null>(null);
   const isAdminRef = useRef(false);
@@ -114,8 +113,9 @@ export function MessageRealtimeProvider({ children }: { children: ReactNode }) {
     if (!supabase) return;
 
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      data: { session },
+    } = await supabase.auth.getSession();
+    const user = session?.user;
 
     if (!user) {
       userIdRef.current = null;
@@ -128,6 +128,7 @@ export function MessageRealtimeProvider({ children }: { children: ReactNode }) {
 
     setIsLoggedIn(true);
     userIdRef.current = user.id;
+    setActiveUserId(user.id);
 
     const { data: profile } = await supabase
       .from("profiles")
@@ -150,6 +151,9 @@ export function MessageRealtimeProvider({ children }: { children: ReactNode }) {
     const { data: conversations } = await query;
     const ids = conversations?.map((c) => c.id) ?? [];
     setConversationIds(ids);
+    if (!admin && ids[0]) {
+      setQuickChatConvId((prev) => prev ?? ids[0]);
+    }
 
     void (admin ? getAdminUnreadMessageCount() : getUnreadMessageCount()).then((total) => {
       setCount(total);
@@ -218,8 +222,18 @@ export function MessageRealtimeProvider({ children }: { children: ReactNode }) {
       if (isOnChatInboxPage(path, adminView)) {
         window.dispatchEvent(
           new CustomEvent<ChatIncomingDetail>(CHAT_INCOMING_EVENT, {
-            detail: { conversationId: msg.conversation_id },
+            detail: { conversationId: msg.conversation_id, message: msg },
           })
+        );
+        return;
+      }
+
+      if (!adminView) {
+        setQuickChatConvId(msg.conversation_id);
+        setQuickChatOpen(true);
+        void showMessagePopup(
+          msg,
+          `/dashboard/messages?conversation=${msg.conversation_id}`
         );
         return;
       }
@@ -242,11 +256,11 @@ export function MessageRealtimeProvider({ children }: { children: ReactNode }) {
 
           msgHref = conv?.user_id ? `/admin/chat?userId=${conv.user_id}` : "/admin/chat";
           router.push(msgHref);
+          void showMessagePopup(msg, msgHref);
         } else {
           router.push(msgHref);
+          void showMessagePopup(msg, msgHref);
         }
-
-        void showMessagePopup(msg, msgHref);
       } finally {
         setTimeout(() => {
           openingChatRef.current = false;
@@ -536,7 +550,10 @@ export function MessageRealtimeProvider({ children }: { children: ReactNode }) {
       if (session?.user) runSync();
       else {
         userIdRef.current = null;
+        setActiveUserId(null);
         setConversationIds([]);
+        setQuickChatOpen(false);
+        setQuickChatConvId(null);
         setCount(0);
         setIsAdmin(false);
         setIsLoggedIn(false);
@@ -584,23 +601,39 @@ export function MessageRealtimeProvider({ children }: { children: ReactNode }) {
   }, [isLoggedIn]);
 
   useEffect(() => {
-    // Inbox pages subscribe per-thread — skip duplicate channels here.
     if (onInboxPage) return;
 
     const supabase = createClient();
-    if (!supabase || !userIdRef.current || !isLoggedIn) return;
+    if (!supabase || !activeUserId || !isLoggedIn) return;
 
-    const userId = userIdRef.current;
+    const userId = activeUserId;
     const isAdminUser = isAdminRef.current;
 
-    return subscribeToMessageInserts(
-      supabase,
-      `msg-rt-all-${userId}`,
-      userId,
-      (msg) => handleIncomingMessageRef.current(msg),
-      isAdminUser ? undefined : { conversationIds: conversationIds }
+    if (isAdminUser || conversationIds.length === 0) {
+      return subscribeToMessageInserts(
+        supabase,
+        `msg-rt-all-${userId}`,
+        userId,
+        (msg) => handleIncomingMessageRef.current(msg)
+      );
+    }
+
+    const unsubs = conversationIds.map((conversationId) =>
+      subscribeToConversationInserts(
+        supabase,
+        `msg-rt-conv-${userId}-${conversationId}`,
+        conversationId,
+        (msg) => {
+          if (msg.sender_id === userId) return;
+          handleIncomingMessageRef.current(msg);
+        }
+      )
     );
-  }, [conversationIds, onInboxPage, isLoggedIn, isAdmin]);
+
+    return () => {
+      for (const unsub of unsubs) unsub();
+    };
+  }, [onInboxPage, isLoggedIn, activeUserId, conversationIds]);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -765,8 +798,17 @@ export function MessageRealtimeProvider({ children }: { children: ReactNode }) {
 
   function openActivityPopup() {
     if (!popup) return;
+    const item = popup;
     setPopup(null);
-    router.push(popup.href);
+
+    if (item.kind === "message" && !item.isAdminView) {
+      const match = item.href.match(/conversation=([^&]+)/);
+      if (match?.[1]) setQuickChatConvId(match[1]);
+      setQuickChatOpen(true);
+      return;
+    }
+
+    router.push(item.href);
   }
 
   function popupIcon(item: ActivityPopup) {
@@ -798,11 +840,11 @@ export function MessageRealtimeProvider({ children }: { children: ReactNode }) {
     return "Tap to view request";
   }
 
-  const hideFab =
-    (isAdmin && pathname?.startsWith("/admin/chat")) ||
-    (!isAdmin && pathname?.startsWith("/dashboard/messages"));
+  const onAdminRoute = Boolean(pathname?.startsWith("/admin"));
 
-  const chatHref = isAdmin ? "/admin/chat" : "/dashboard/messages";
+  const hideFab =
+    (onAdminRoute && pathname?.startsWith("/admin/chat")) ||
+    (!onAdminRoute && pathname?.startsWith("/dashboard/messages"));
 
   const contextValue = useMemo(
     () => ({ count, isAdmin, refresh }),
@@ -815,11 +857,53 @@ export function MessageRealtimeProvider({ children }: { children: ReactNode }) {
       {children}
 
       {!hideFab && isLoggedIn && (
-        <Link
-          href={chatHref}
-          onClick={() => void unlockMessageNotificationSound()}
-          className="fixed bottom-5 right-4 sm:bottom-6 sm:right-6 z-50 w-14 h-14 rounded-full gradient-bg flex items-center justify-center shadow-lg glow-purple"
-          aria-label={isAdmin ? "Open customer chat" : "Open messages"}
+        <button
+          type="button"
+          onClick={() => {
+            void unlockMessageNotificationSound();
+            if (onAdminRoute) {
+              setQuickChatOpen(false);
+              router.push("/admin/chat");
+              return;
+            }
+            if (quickChatOpen) {
+              setQuickChatOpen(false);
+              return;
+            }
+            void (async () => {
+              try {
+                const uid = activeUserId ?? userIdRef.current;
+                if (!uid) {
+                  router.push("/dashboard/messages");
+                  return;
+                }
+
+                let convId = quickChatConvId;
+                if (!convId) {
+                  const supabase = createClient();
+                  if (supabase) {
+                    convId = await ensureUserConversationClient(supabase, uid);
+                  }
+                  if (!convId) {
+                    const ensured = await ensureUserConversation();
+                    convId = ensured.conversationId ?? null;
+                  }
+                }
+
+                if (!convId) {
+                  router.push("/dashboard/messages");
+                  return;
+                }
+
+                setQuickChatConvId(convId);
+                setQuickChatOpen(true);
+              } catch {
+                router.push("/dashboard/messages");
+              }
+            })();
+          }}
+          className="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-[max(1rem,env(safe-area-inset-right))] sm:bottom-6 sm:right-6 z-[130] w-14 h-14 rounded-full gradient-bg flex items-center justify-center shadow-lg glow-purple touch-manipulation pointer-events-auto"
+          aria-label={onAdminRoute ? "Open customer chat" : "Open live chat"}
         >
           <MessageCircle className="h-6 w-6 text-white" />
           {count > 0 && (
@@ -827,7 +911,16 @@ export function MessageRealtimeProvider({ children }: { children: ReactNode }) {
               <UnreadBadge count={count} className="ring-2 ring-[#121212]" />
             </span>
           )}
-        </Link>
+        </button>
+      )}
+
+      {!onAdminRoute && !onInboxPage && isLoggedIn && quickChatOpen && quickChatConvId && activeUserId && (
+        <UserQuickChat
+          open={quickChatOpen}
+          conversationId={quickChatConvId}
+          userId={activeUserId}
+          onClose={() => setQuickChatOpen(false)}
+        />
       )}
 
       {popup && (

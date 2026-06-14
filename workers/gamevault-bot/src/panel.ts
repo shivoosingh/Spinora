@@ -304,24 +304,36 @@ export async function createAccount(
   page: Page,
   baseUsername: string,
   password: string,
-  variant: (base: string, attempt: number) => string
+  variant: (base: string, attempt: number) => string,
+  options?: { forceNewAccount?: boolean }
 ): Promise<{ username: string; password: string }> {
+  const forceNewAccount = Boolean(options?.forceNewAccount);
+
   for (let attempt = 0; attempt < 20; attempt++) {
     const username = variant(baseUsername, attempt);
 
-    // Skip names already taken before attempting to create.
     if (await accountExists(page, username)) {
+      if (forceNewAccount) {
+        log("create", `"${username}" already exists — trying next number`);
+        continue;
+      }
       log("create", `"${username}" already exists — trying next variant`);
       continue;
     }
 
-    const outcome = await tryCreateOnce(page, username, password);
+    const outcome = await tryCreateOnce(page, username, username);
     if (outcome.status === "created") {
       log("create", `created ${username}`);
-      return { username, password };
+      return { username, password: username };
     }
     if (outcome.status === "duplicate") {
-      continue; // name got taken in a race — try the next variant
+      continue;
+    }
+
+    // Panel sometimes leaves the dialog open after a duplicate — try the next number.
+    if (await accountExists(page, username)) {
+      log("create", `"${username}" still on panel after failed submit — trying next number`);
+      continue;
     }
 
     // A real error (e.g. validation) — stop so we don't create junk accounts.

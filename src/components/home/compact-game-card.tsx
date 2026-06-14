@@ -20,7 +20,7 @@ export function CompactGameCard({
   className,
   eager = false,
 }: CompactGameCardProps) {
-  const { ref, inView } = useInView("400px", eager);
+  const { ref, inView } = useInView("800px", eager);
   const showImage = eager || inView;
   const href = `/games/${game.slug}`;
 

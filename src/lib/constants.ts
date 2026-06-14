@@ -7,7 +7,7 @@ export const DAILY_SPIN_ENABLED = true;
 export const REFERRAL_REWARD_POINTS = 10;
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://spinoracasinos.com";
 export const SITE_DESCRIPTION =
-  "Premium gaming support and account platform. Request game accounts, VIP rewards, live chat support, and exclusive promotions.";
+  "Spinora is your hub for Juwa casino, Game Vault, slot games, and fish games. Create game accounts fast, claim bonuses, earn VIP rewards, and get 24/7 live support.";
 
 export const VIP_TIERS = [
   {

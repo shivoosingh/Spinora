@@ -1,6 +1,6 @@
 import type { Page } from "playwright";
 import type { GameLoadJob, JuwaBotResult } from "./types.js";
-import { buildJuwaCredentials, usernameVariant } from "./credentials.js";
+import { planCreateAccount, variantFromPlan } from "../../shared/numbered-credentials.js";
 import { openBrowserSession, vpnHint } from "./browser.js";
 import {
   goToUserManagement,
@@ -32,46 +32,44 @@ function envOptional(name: string): string | undefined {
   return process.env[name]?.trim() || undefined;
 }
 
-function credentialsForJob(job: GameLoadJob): { username: string; password: string } {
-  // User picked their own login → honour it (uniqueness handled separately).
-  const customUser = job.game_username?.trim();
-  if (customUser) {
-    const password = job.game_password?.trim() || customUser;
-    return { username: customUser.slice(0, 13), password };
-  }
-  return buildJuwaCredentials({
-    full_name: job.requester_name,
-    email: job.requester_email,
-  });
+function passwordForUsername(username: string, preferred?: string | null): string {
+  return preferred?.trim() || username;
 }
 
-/** Find a free account name, appending a letter/number when one is taken. */
-async function resolveUniqueUsername(page: Page, base: string): Promise<string> {
+/** Find a free numbered account name (shivoo1, shivoo2, …). */
+async function resolveUniqueUsername(
+  page: Page,
+  plan: ReturnType<typeof planCreateAccount>
+): Promise<string> {
+  const variant = variantFromPlan(plan);
   for (let attempt = 0; attempt < 40; attempt++) {
-    const candidate = usernameVariant(base, attempt);
+    const candidate = variant(plan.stem, attempt);
     const taken = await userExists(page, candidate).catch(() => false);
     if (!taken) {
-      if (attempt > 0) log("create-user", `"${base}" taken → using "${candidate}"`);
+      if (attempt > 0) log("create-user", `using "${candidate}" (${plan.stem}#${plan.startNum + attempt})`);
       return candidate;
     }
   }
-  // Fallback: timestamp-based suffix keeps it unique and within 13 chars.
   const suffix = String(Date.now()).slice(-4);
-  return `${base.slice(0, 13 - suffix.length)}${suffix}`;
+  return `${plan.stem.slice(0, 13 - suffix.length)}${suffix}`;
 }
 
 async function createUser(
   page: Page,
   job: GameLoadJob
 ): Promise<{ username: string; password: string }> {
-  const requested = credentialsForJob(job);
-  log("create-user", `${requested.username} (requester: ${job.requester_name ?? job.requester_email ?? job.user_id})`);
+  const plan = planCreateAccount(job);
+  log(
+    "create-user",
+    `${plan.stem} from #${plan.startNum} (requester: ${job.requester_name ?? job.requester_email ?? job.user_id})`
+  );
 
   await goToUserManagement(page);
   await screenshot(page, "03-user-management");
 
-  const username = await resolveUniqueUsername(page, requested.username);
-  const creds = { username, password: requested.password };
+  const username = await resolveUniqueUsername(page, plan);
+  const password = passwordForUsername(username, plan.preferredPassword);
+  const creds = { username, password };
 
   await fillCreateUserForm(page, creds.username, creds.password);
   await screenshot(page, "04-after-create");

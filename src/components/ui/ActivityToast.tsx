@@ -94,7 +94,7 @@ export function ActivityToast() {
         advance();
         setAnimating("in");
       }, 400);
-    }, 4500);
+    }, 6000);
 
     return () => clearInterval(cycle);
   }, [advance]);

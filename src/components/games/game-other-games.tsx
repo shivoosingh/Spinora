@@ -13,7 +13,7 @@ export function GameOtherGames({ games }: GameOtherGamesProps) {
     <section className="space-y-4">
       <h2 className="text-lg font-bold text-white">Other Games</h2>
       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-3">
-        {games.map((game) => (
+        {games.map((game, index) => (
           <Link
             key={game.id}
             href={`/games/${game.slug}`}
@@ -24,6 +24,8 @@ export function GameOtherGames({ games }: GameOtherGamesProps) {
                 src={game.image}
                 alt={game.name}
                 fill
+                priority={index < 6}
+                loading={index < 6 ? "eager" : "lazy"}
                 className="object-cover group-hover:scale-105 transition-transform duration-300"
                 sizes="120px"
               />

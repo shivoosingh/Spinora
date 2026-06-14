@@ -11,7 +11,7 @@ import { getAdminConversationUnreads, type AdminConversationUnread } from "@/lib
 import { uploadChatAttachment } from "@/lib/chat/attachments";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatMessageContent } from "@/components/chat/chat-message-content";
-import { MobileChatShell } from "@/components/chat/mobile-chat-shell";
+import { MobileChatShell, useMobileChatClose } from "@/components/chat/mobile-chat-shell";
 import { AdminUserSearch } from "@/components/admin/admin-user-search";
 import { UnreadBadge } from "@/components/ui/unread-badge";
 import { useUnreadMessages } from "@/hooks/use-unread-messages";
@@ -20,7 +20,8 @@ import { CHAT_INBOX_CARD_CLASS, CHAT_SCROLL_CLASS } from "@/lib/chat/chat-layout
 import { useChatAutoScroll } from "@/lib/chat/use-chat-auto-scroll";
 import { CHAT_INCOMING_EVENT, type ChatIncomingDetail } from "@/lib/chat/events";
 import { playIncomingMessageSound } from "@/lib/chat/message-notification-sound";
-import { subscribeToMessageInserts } from "@/lib/chat/subscribe-messages";
+import { subscribeToConversationInserts, subscribeToMessageInserts } from "@/lib/chat/subscribe-messages";
+import { appendMessage, mergeMessagesById } from "@/lib/chat/merge-messages";
 import { isUserOnline } from "@/lib/presence/utils";
 import { toast } from "sonner";
 import { ArrowLeft, MessageCircle } from "lucide-react";
@@ -43,6 +44,15 @@ export interface AdminConversation {
 interface AdminChatInboxProps {
   conversations: AdminConversation[];
   initialUserId?: string;
+  initialUnreads?: AdminConversationUnread[];
+}
+
+function unreadsToMap(list: AdminConversationUnread[]): Record<string, AdminConversationUnread> {
+  const map: Record<string, AdminConversationUnread> = {};
+  for (const item of list) {
+    map[item.conversationId] = item;
+  }
+  return map;
 }
 
 function displayContact(user: ConversationUser | null | undefined) {
@@ -82,6 +92,16 @@ function AdminChatPanel({
   scrollRef,
   onScrollMessages,
 }: AdminChatPanelProps) {
+  const closeViaBack = useMobileChatClose();
+
+  function handleBack() {
+    if (closeViaBack) {
+      closeViaBack();
+      return;
+    }
+    onBack?.();
+  }
+
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full overflow-hidden">
       <div className="p-3 sm:p-4 border-b border-white/10 flex items-center gap-2 sm:gap-3 bg-[#121212] shrink-0">
@@ -90,7 +110,7 @@ function AdminChatPanel({
             variant="ghost"
             size="icon"
             className="shrink-0"
-            onClick={onBack}
+            onClick={handleBack}
             aria-label="Back to customers"
           >
             <ArrowLeft className="h-4 w-4" />
@@ -179,9 +199,15 @@ function AdminChatPanel({
   );
 }
 
-export function AdminChatInbox({ conversations: initialConversations, initialUserId }: AdminChatInboxProps) {
+export function AdminChatInbox({
+  conversations: initialConversations,
+  initialUserId,
+  initialUnreads,
+}: AdminChatInboxProps) {
   const [conversations, setConversations] = useState(initialConversations);
-  const [unreads, setUnreads] = useState<Record<string, AdminConversationUnread>>({});
+  const [unreads, setUnreads] = useState<Record<string, AdminConversationUnread>>(() =>
+    initialUnreads ? unreadsToMap(initialUnreads) : {}
+  );
   const [selectedId, setSelectedId] = useState(initialConversations[0]?.id ?? "");
   const [messages, setMessages] = useState<Message[]>([]);
   const [adminId, setAdminId] = useState<string | null>(null);
@@ -200,6 +226,9 @@ export function AdminChatInbox({ conversations: initialConversations, initialUse
   conversationUserIdsRef.current = conversations.map((c) => c.user_id);
 
   const selectConversation = useCallback((id: string, options?: { openMobile?: boolean }) => {
+    if (id !== selectedIdRef.current) {
+      setMessages([]);
+    }
     setSelectedId(id);
     if (options?.openMobile !== false) {
       setMobileChatOpen(true);
@@ -238,14 +267,15 @@ export function AdminChatInbox({ conversations: initialConversations, initialUse
     );
   }, [supabase]);
 
+  const selected = conversations.find((c) => c.id === selectedId);
+
   const messageFingerprint = messages.length > 0 ? messages[messages.length - 1]?.id : "";
   const { onScroll: onScrollMessages } = useChatAutoScroll(
     scrollRef,
     messages.length,
-    messageFingerprint
+    messageFingerprint,
+    selectedId
   );
-
-  const selected = conversations.find((c) => c.id === selectedId);
 
   const loadUnreads = useCallback(async () => {
     const list = await getAdminConversationUnreads();
@@ -272,11 +302,15 @@ export function AdminChatInbox({ conversations: initialConversations, initialUse
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true });
 
-      if (data) setMessages(data);
+      if (selectedIdRef.current !== conversationId) return;
+
+      setMessages(data ?? []);
 
       const {
         data: { user },
       } = await supabase.auth.getUser();
+
+      if (selectedIdRef.current !== conversationId) return;
 
       await supabase
         .from("messages")
@@ -294,18 +328,21 @@ export function AdminChatInbox({ conversations: initialConversations, initialUse
   useEffect(() => {
     if (!supabase) return;
     supabase.auth.getUser().then(({ data }) => setAdminId(data.user?.id ?? null));
-    void loadUnreads();
-  }, [supabase, loadUnreads]);
+    if (!initialUnreads?.length) {
+      void loadUnreads();
+    }
+  }, [supabase, loadUnreads, initialUnreads]);
 
-  useEffect(() => {
-    if (!supabase || !adminId) return;
+  const handleIncomingMessage = useCallback(
+    (msg: Message) => {
+      if (!supabase || !adminId || msg.sender_id === adminId) return;
 
-    return subscribeToMessageInserts(supabase, `admin-inbox-${adminId}`, adminId, (msg) => {
       playIncomingMessageSound(msg.sender_id, adminId);
       scheduleLoadUnreads();
 
       if (msg.conversation_id === selectedIdRef.current) {
-        setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+        setMessages((prev) => appendMessage(prev, msg));
+        setMobileChatOpen(true);
         void supabase
           .from("messages")
           .update({ is_read: true })
@@ -315,25 +352,69 @@ export function AdminChatInbox({ conversations: initialConversations, initialUse
       }
 
       selectConversation(msg.conversation_id);
-      setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+    },
+    [supabase, adminId, scheduleLoadUnreads, refreshGlobalUnread, selectConversation]
+  );
+
+  useEffect(() => {
+    if (!supabase || !adminId) return;
+
+    return subscribeToMessageInserts(supabase, `admin-inbox-${adminId}`, adminId, (msg) => {
+      if (msg.conversation_id === selectedIdRef.current) return;
+      handleIncomingMessage(msg);
     });
-  }, [supabase, adminId, scheduleLoadUnreads, refreshGlobalUnread, selectConversation]);
+  }, [supabase, adminId, handleIncomingMessage]);
+
+  useEffect(() => {
+    if (!supabase || !selectedId || !adminId) return;
+
+    return subscribeToConversationInserts(
+      supabase,
+      `admin-live-${selectedId}`,
+      selectedId,
+      (msg) => {
+        if (msg.sender_id === adminId) return;
+        handleIncomingMessage(msg);
+      }
+    );
+  }, [supabase, selectedId, adminId, handleIncomingMessage]);
+
+  useEffect(() => {
+    if (!supabase || !selectedId) return;
+
+    const poll = () => {
+      if (document.visibilityState !== "visible") return;
+      void supabase
+        .from("messages")
+        .select("*")
+        .eq("conversation_id", selectedId)
+        .order("created_at", { ascending: true })
+        .then(({ data }) => {
+          if (selectedIdRef.current !== selectedId) return;
+          if (data) setMessages((prev) => mergeMessagesById(prev, data));
+        });
+    };
+
+    poll();
+    const interval = setInterval(poll, 800);
+    return () => clearInterval(interval);
+  }, [supabase, selectedId]);
 
   useEffect(() => {
     function onChatIncoming(event: Event) {
-      const { conversationId } = (event as CustomEvent<ChatIncomingDetail>).detail;
-      if (!conversationId) return;
-      if (conversationId === selectedIdRef.current) {
-        setMobileChatOpen(true);
+      const detail = (event as CustomEvent<ChatIncomingDetail>).detail;
+      if (!detail.conversationId) return;
+      if (detail.message) {
+        handleIncomingMessage(detail.message);
         return;
       }
-      selectConversation(conversationId);
-      void loadMessages(conversationId);
+      selectConversation(detail.conversationId);
+      void loadMessages(detail.conversationId);
     }
 
     window.addEventListener(CHAT_INCOMING_EVENT, onChatIncoming);
     return () => window.removeEventListener(CHAT_INCOMING_EVENT, onChatIncoming);
-  }, [selectConversation, loadMessages]);
+  }, [selectConversation, loadMessages, handleIncomingMessage]);
 
   useEffect(() => {
     void refreshOnlineStatus();
@@ -568,7 +649,10 @@ export function AdminChatInbox({ conversations: initialConversations, initialUse
       </Card>
 
       {/* Mobile full-screen chat — portaled to body so composer is never clipped */}
-      <MobileChatShell open={mobileChatOpen && !!selectedId}>
+      <MobileChatShell
+        open={mobileChatOpen && !!selectedId}
+        onClose={() => setMobileChatOpen(false)}
+      >
         <AdminChatPanel
           {...chatPanelProps}
           showMobileBack

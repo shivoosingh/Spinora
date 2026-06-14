@@ -1,5 +1,5 @@
 import type { GameLoadJob, BotResult } from "./types.js";
-import { buildCredentials, usernameVariant, normalizeUsername, passwordForAccount } from "./credentials.js";
+import { planCreateAccount, variantFromPlan } from "../../shared/numbered-credentials.js";
 import { openBrowserSession, vpnHint } from "./browser.js";
 import {
   loginToPanel,
@@ -10,19 +10,6 @@ import {
 } from "./panel.js";
 import { log, screenshot } from "./panel-utils.js";
 
-function credentialsForJob(job: GameLoadJob): { username: string; password: string } {
-  const customUser = job.game_username?.trim();
-  if (customUser) {
-    const username = normalizeUsername(customUser);
-    const password = passwordForAccount(username, job.game_password?.trim() || undefined);
-    return { username, password };
-  }
-  return buildCredentials({
-    full_name: job.requester_name,
-    email: job.requester_email,
-  });
-}
-
 export async function runJob(job: GameLoadJob): Promise<BotResult> {
   const session = await openBrowserSession();
   const { page, close } = session;
@@ -31,16 +18,17 @@ export async function runJob(job: GameLoadJob): Promise<BotResult> {
     await loginToPanel(page);
 
     if (job.load_type === "create_account" || job.load_type === "new_account") {
-      const requested = credentialsForJob(job);
+      const plan = planCreateAccount(job);
       log(
         "create-user",
-        `${requested.username} (pw len ${requested.password.length}, requester: ${job.requester_name ?? job.requester_email ?? job.user_id})`
+        `${plan.stem} from #${plan.startNum} (requester: ${job.requester_name ?? job.requester_email ?? job.user_id})`
       );
       const creds = await createAccount(
         page,
-        requested.username,
-        requested.password,
-        usernameVariant
+        plan.stem,
+        plan.preferredPassword ?? "",
+        variantFromPlan(plan),
+        { forceNewAccount: plan.forceNewAccount }
       );
       return creds;
     }
@@ -76,7 +64,6 @@ export async function runJob(job: GameLoadJob): Promise<BotResult> {
     await screenshot(page, "error");
     throw new Error(vpnHint(err));
   } finally {
-    // Keep Chrome open when using CDP — don't disconnect mid-session
     if (!process.env.GAMEROOM_CDP_URL) {
       await close();
     }

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createNotification } from "@/lib/actions/notifications";
 import { getJuwaAdminPanelUrl, getVegasAdminPanelUrl, getGameVaultAdminPanelUrl, getCashFrenzyAdminPanelUrl, isWalletLoadEnabledForGame, WALLET_LOAD_LIMITS } from "@/lib/game-automation/config";
 import type { GameLoadWalletType } from "@/lib/game-automation/types";
@@ -23,6 +24,13 @@ export async function requestGameAccountCreate(input: {
   if (!isWalletLoadEnabledForGame(input.gameSlug)) {
     return { error: "Wallet load is not enabled for this game yet." };
   }
+
+  // Fail jobs stuck in pending/processing (no-op if SQL migration not applied yet).
+  await supabase.rpc("fail_stale_game_loads", {
+    p_stale_minutes: 5,
+    p_user_id: user.id,
+    p_game_slug: input.gameSlug,
+  });
 
   const existing = await getMyGameAccount(input.gameSlug);
   const hasAccount = Boolean(existing?.game_username);
@@ -61,7 +69,10 @@ export async function requestGameAccountCreate(input: {
     .maybeSingle();
 
   if (pending) {
-    return { error: "A request is already in progress. Please wait." };
+    return {
+      error:
+        "A request is already in progress. Cancel the stuck item under Recent activity below, then try Replace again.",
+    };
   }
 
   const { data: requestId, error } = await supabase.rpc("request_game_account_create", {
@@ -307,6 +318,108 @@ export async function getMyGameAccount(gameSlug: string) {
     .maybeSingle();
 
   return data;
+}
+
+/** Fail pending/processing jobs older than N minutes (frees blocked Replace / Load clicks). */
+export async function healStaleGameLoads(gameSlug: string, staleMinutes = 15) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { healed: 0 };
+
+  const { data, error } = await supabase.rpc("fail_stale_game_loads", {
+    p_stale_minutes: staleMinutes,
+    p_user_id: user.id,
+    p_game_slug: gameSlug,
+  });
+
+  if (!error) return { healed: Number(data ?? 0) };
+
+  const admin = createAdminClient();
+  if (!admin) return { healed: 0 };
+
+  const now = Date.now();
+  const cutoff = new Date(now - staleMinutes * 60 * 1000).toISOString();
+  const oldProcessingCutoff = new Date(now - 30 * 60 * 1000).toISOString();
+
+  const { data: oldRows } = await admin
+    .from("game_load_requests")
+    .update({
+      status: "failed",
+      error_message:
+        "This request got stuck (bot did not finish). Refresh, then click Replace Account again.",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .eq("game_slug", gameSlug)
+    .eq("status", "processing")
+    .lt("created_at", oldProcessingCutoff)
+    .select("id");
+
+  const { data: rows } = await admin
+    .from("game_load_requests")
+    .update({
+      status: "failed",
+      error_message:
+        "Timed out waiting for the game bot. Restart the bot on your PC, then try Replace again.",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("user_id", user.id)
+    .eq("game_slug", gameSlug)
+    .in("status", ["pending", "processing"])
+    .lt("updated_at", cutoff)
+    .select("id");
+
+  return { healed: (rows?.length ?? 0) + (oldRows?.length ?? 0) };
+}
+
+export async function cancelMyGameLoad(requestId: string, gameSlug: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const { error } = await supabase.rpc("cancel_my_game_load", {
+    p_request_id: requestId,
+  });
+
+  if (!error) {
+    revalidatePath(`/games/${gameSlug}`);
+    revalidatePath("/admin/game-loads");
+    return { success: true };
+  }
+
+  const admin = createAdminClient();
+  if (!admin) {
+    return {
+      error:
+        error.message.includes("cancel_my_game_load")
+          ? "Run supabase/stale-game-load-recovery.sql in Supabase, or ask admin to cancel the stuck job."
+          : error.message,
+    };
+  }
+
+  const { data: rows, error: updErr } = await admin
+    .from("game_load_requests")
+    .update({
+      status: "cancelled",
+      error_message: "Cancelled — you can start a new request.",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", requestId)
+    .eq("user_id", user.id)
+    .in("status", ["pending", "processing"])
+    .select("id");
+
+  if (updErr || !rows?.length) {
+    return { error: updErr?.message ?? "Request not found or already finished" };
+  }
+
+  revalidatePath(`/games/${gameSlug}`);
+  revalidatePath("/admin/game-loads");
+  return { success: true };
 }
 
 export async function getAdminPanelUrlForGame(gameSlug: string) {

@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 import { SITE_URL, PUBLIC_ROUTES } from "@/lib/constants";
 import { GAMES } from "@/lib/games";
+import { getGameSitemapPriority } from "@/lib/seo/game-seo";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const staticRoutes = PUBLIC_ROUTES.map((route) => ({
@@ -14,7 +15,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     url: `${SITE_URL}/games/${game.slug}`,
     lastModified: new Date(),
     changeFrequency: "weekly" as const,
-    priority: 0.85,
+    priority: getGameSitemapPriority(game),
   }));
 
   return [...staticRoutes, ...gameRoutes];

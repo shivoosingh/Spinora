@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import dynamic from "next/dynamic";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -24,10 +25,17 @@ import { Button } from "@/components/ui/button";
 import { AnimatedLogo, AnimatedLogoText } from "@/components/ui/animated-logo";
 import { cn } from "@/lib/utils";
 import { logoutUser } from "@/lib/auth/logout";
-import { NotificationDropdown } from "@/components/notifications/notification-dropdown";
 import { WalletCardLoader } from "@/components/wallet/wallet-card-loader";
 import { useUnreadMessages } from "@/hooks/use-unread-messages";
 import { UnreadBadge } from "@/components/ui/unread-badge";
+
+const NotificationDropdown = dynamic(
+  () =>
+    import("@/components/notifications/notification-dropdown").then(
+      (m) => m.NotificationDropdown
+    ),
+  { ssr: false, loading: () => null }
+);
 
 const userLinks = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -53,6 +61,11 @@ const adminLinks = [
   { href: "/admin/tasks", label: "Task Review", icon: Target },
 ];
 
+const ALL_NAV_ROUTES = [
+  ...userLinks.map((l) => l.href),
+  ...adminLinks.map((l) => l.href),
+].filter((href) => !href.startsWith("/#"));
+
 interface DashboardNavProps {
   isAdmin?: boolean;
 }
@@ -62,11 +75,13 @@ function NavLinks({
   isAdmin,
   onNavigate,
   unreadMessages,
+  warmRoute,
 }: {
   pathname: string;
   isAdmin: boolean;
   onNavigate?: () => void;
   unreadMessages: number;
+  warmRoute: (href: string) => void;
 }) {
   return (
     <>
@@ -80,7 +95,11 @@ function NavLinks({
           <Link
             key={link.href}
             href={link.href}
+            prefetch
             onClick={onNavigate}
+            onMouseEnter={() => warmRoute(link.href)}
+            onFocus={() => warmRoute(link.href)}
+            onTouchStart={() => warmRoute(link.href)}
             className={cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
               active
@@ -113,7 +132,11 @@ function NavLinks({
               <Link
                 key={link.href}
                 href={link.href}
+                prefetch
                 onClick={onNavigate}
+                onMouseEnter={() => warmRoute(link.href)}
+                onFocus={() => warmRoute(link.href)}
+                onTouchStart={() => warmRoute(link.href)}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
                   active
@@ -137,8 +160,23 @@ function NavLinks({
 
 export function DashboardNav({ isAdmin = false }: DashboardNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const prefetched = useRef(new Set<string>());
   const [mobileOpen, setMobileOpen] = useState(false);
   const { count: unreadMessages } = useUnreadMessages();
+
+  function warmRoute(href: string) {
+    if (prefetched.current.has(href) || href.startsWith("/#")) return;
+    prefetched.current.add(href);
+    router.prefetch(href);
+  }
+
+  useEffect(() => {
+    const routes = isAdmin ? ALL_NAV_ROUTES : userLinks.map((l) => l.href).filter((h) => !h.startsWith("/#"));
+    for (const href of routes) {
+      warmRoute(href);
+    }
+  }, [router, isAdmin]);
 
   async function handleLogout() {
     await logoutUser("/");
@@ -170,7 +208,7 @@ export function DashboardNav({ isAdmin = false }: DashboardNavProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="lg:hidden fixed inset-0 z-50 bg-black/60"
+              className="lg:hidden fixed inset-0 z-[110] bg-black/60"
               onClick={() => setMobileOpen(false)}
             />
             <motion.aside
@@ -178,7 +216,7 @@ export function DashboardNav({ isAdmin = false }: DashboardNavProps) {
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="lg:hidden fixed left-0 top-0 bottom-0 z-50 w-72 glass border-r border-border flex flex-col"
+              className="lg:hidden fixed left-0 top-0 bottom-0 z-[120] w-72 glass border-r border-border flex flex-col"
             >
               <div className="p-4 border-b border-border flex items-center justify-between">
                 <AnimatedLogoText textClassName="text-base" />
@@ -192,6 +230,7 @@ export function DashboardNav({ isAdmin = false }: DashboardNavProps) {
                   isAdmin={isAdmin}
                   onNavigate={() => setMobileOpen(false)}
                   unreadMessages={unreadMessages}
+                  warmRoute={warmRoute}
                 />
               </nav>
               <div className="p-3 border-t border-border">
@@ -215,7 +254,7 @@ export function DashboardNav({ isAdmin = false }: DashboardNavProps) {
           <WalletCardLoader />
         </div>
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-          <NavLinks pathname={pathname} isAdmin={isAdmin} unreadMessages={unreadMessages} />
+          <NavLinks pathname={pathname} isAdmin={isAdmin} unreadMessages={unreadMessages} warmRoute={warmRoute} />
         </nav>
         <div className="p-3 border-t border-border">
           <Button variant="ghost" className="w-full justify-start gap-3" onClick={handleLogout}>

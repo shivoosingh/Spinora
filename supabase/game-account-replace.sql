@@ -58,10 +58,11 @@ BEGIN
   END IF;
 
   INSERT INTO game_load_requests (
-    user_id, game_slug, game_name, amount, wallet_type, load_type, game_username, game_password, status
+    user_id, game_slug, game_name, amount, wallet_type, load_type, game_username, game_password, status, admin_notes
   )
   VALUES (
-    v_user_id, p_game_slug, p_game_name, 0, 'current', 'create_account', v_username, v_password, 'pending'
+    v_user_id, p_game_slug, p_game_name, 0, 'current', 'create_account', v_username, v_password, 'pending',
+    CASE WHEN COALESCE(p_replace, FALSE) THEN 'account_replace' ELSE NULL END
   )
   RETURNING id INTO v_request_id;
 

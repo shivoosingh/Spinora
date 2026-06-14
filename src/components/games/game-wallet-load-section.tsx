@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Copy,
   Eye,
@@ -23,14 +23,18 @@ import {
   requestGameCheckBalance,
   getMyGameLoads,
   getMyGameAccount,
+  healStaleGameLoads,
+  cancelMyGameLoad,
 } from "@/lib/actions/game-loads";
 import type { Game } from "@/lib/games";
 import type { GameLoadRequest } from "@/lib/game-automation/types";
+import { isAutomatedGameSlug, AUTOMATED_BOT_WORKER_DIR } from "@/lib/game-automation/types";
 import { isGameAccountCreateLoadType } from "@/lib/game-automation/account-create";
 import { WALLET_LOAD_LIMITS } from "@/lib/game-automation/config";
 import { previewJuwaUsername } from "@/lib/game-automation/juwa-credentials";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
+import { WALLET_REFRESH_EVENT } from "@/lib/wallet/use-live-wallet";
 
 interface GameWalletLoadSectionProps {
   game: Game;
@@ -70,6 +74,9 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
     game_password: string | null;
   } | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const failedToastRef = useRef<string | null>(null);
+  const pendingLoadIdsRef = useRef<Set<string>>(new Set());
 
   const refreshWallet = useCallback(async () => {
     if (!supabase) return;
@@ -103,8 +110,34 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
   }, [game.slug]);
 
   const refreshLoads = useCallback(async () => {
-    const loads = await getMyGameLoads(game.slug);
-    setRecentLoads(loads as GameLoadRequest[]);
+    const loads = (await getMyGameLoads(game.slug)) as GameLoadRequest[];
+    setRecentLoads(loads);
+
+    const pendingLoads = loads.filter(
+      (l) =>
+        (l.load_type === "load" || l.load_type === "reload") &&
+        (l.status === "pending" || l.status === "processing")
+    );
+    const pendingIds = new Set(pendingLoads.map((l) => l.id));
+    const hadPending = pendingLoadIdsRef.current.size > 0;
+    const finishedLoad = loads.some(
+      (l) =>
+        (l.load_type === "load" || l.load_type === "reload") &&
+        (l.status === "completed" || l.status === "failed" || l.status === "cancelled") &&
+        pendingLoadIdsRef.current.has(l.id)
+    );
+    pendingLoadIdsRef.current = pendingIds;
+
+    if (finishedLoad || (hadPending && pendingIds.size === 0)) {
+      void refreshWallet();
+    }
+
+    const failed = loads.find((l) => l.status === "failed" && l.error_message);
+    if (failed && failedToastRef.current !== failed.id) {
+      failedToastRef.current = failed.id;
+      toast.error(failed.error_message ?? "Request failed. Try again or contact support.");
+      void refreshWallet();
+    }
 
     const completedCreate = loads.find(
       (l) =>
@@ -118,7 +151,9 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
         game_password: completedCreate.game_password,
       });
     }
-  }, [game.slug]);
+
+    return loads;
+  }, [game.slug, refreshWallet]);
 
   useEffect(() => {
     onAccountChange?.(Boolean(savedAccount?.game_username));
@@ -127,24 +162,28 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
   useEffect(() => {
     void refreshWallet();
     void refreshAccount();
-    void refreshLoads();
-    const interval = setInterval(() => {
-      void refreshLoads();
-    }, 8000);
-    return () => clearInterval(interval);
-  }, [refreshWallet, refreshAccount, refreshLoads]);
+    void healStaleGameLoads(game.slug, 5).then((result) => {
+      if (result.healed > 0) void refreshLoads();
+      else void refreshLoads();
+    });
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void refreshLoads();
+        void refreshWallet();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [refreshWallet, refreshAccount, refreshLoads, game.slug]);
 
   useEffect(() => {
-    const bal = walletType === "current" ? walletBalance : bonusBalance;
-    if (bal > 0) {
-      const suggested = Math.min(bal, WALLET_LOAD_LIMITS.max);
-      setAmount(String(Math.round(suggested * 100) / 100));
-    }
-  }, [walletType, walletBalance, bonusBalance]);
+    const onWalletRefresh = () => void refreshWallet();
+    window.addEventListener(WALLET_REFRESH_EVENT, onWalletRefresh);
+    return () => window.removeEventListener(WALLET_REFRESH_EVENT, onWalletRefresh);
+  }, [refreshWallet]);
 
-  const available = walletType === "current" ? walletBalance : bonusBalance;
-  const parsedAmount = parseFloat(amount) || 0;
-  const previewAccount = previewJuwaUsername(requesterName, requesterEmail);
   const pendingCreate = recentLoads.some(
     (l) =>
       isGameAccountCreateLoadType(l.load_type) &&
@@ -161,6 +200,52 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
   const pendingCheck = recentLoads.some(
     (l) => l.load_type === "check_balance" && (l.status === "pending" || l.status === "processing")
   );
+  const anyPending = pendingCreate || pendingLoad || pendingRedeem || pendingCheck;
+
+  useEffect(() => {
+    if (!anyPending) return;
+
+    void healStaleGameLoads(game.slug, 5).then((result) => {
+      if (result.healed > 0) void refreshLoads();
+    });
+
+    void refreshLoads();
+    const interval = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void healStaleGameLoads(game.slug, 5).then((result) => {
+          if (result.healed > 0) void refreshLoads();
+        });
+        void refreshLoads();
+      }
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [anyPending, refreshLoads, game.slug]);
+
+  useEffect(() => {
+    const bal = walletType === "current" ? walletBalance : bonusBalance;
+    if (bal > 0) {
+      const suggested = Math.min(bal, WALLET_LOAD_LIMITS.max);
+      setAmount(String(Math.round(suggested * 100) / 100));
+    }
+  }, [walletType, walletBalance, bonusBalance]);
+
+  const available = walletType === "current" ? walletBalance : bonusBalance;
+  const parsedAmount = parseFloat(amount) || 0;
+  const previewStem = previewJuwaUsername(requesterName, requesterEmail);
+  const usesNumberedAccounts =
+    game.slug === "game-vault" || game.slug === "cash-frenzy" || game.slug === "vegas-sweeps";
+  const previewAccount = usesNumberedAccounts
+    ? (() => {
+        if (savedAccount?.game_username) {
+          const match = savedAccount.game_username.match(/^(.+?)(\d+)$/i);
+          if (match) return `${match[1]}${parseInt(match[2], 10) + 1}`;
+          return `${savedAccount.game_username}2`;
+        }
+        return `${previewStem}1`;
+      })()
+    : previewStem;
+
   const lastBalanceCheck = recentLoads.find(
     (l) => l.load_type === "check_balance" && l.status === "completed"
   );
@@ -173,6 +258,34 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
   }
 
   const hasSavedAccount = Boolean(savedAccount?.game_username);
+
+  const activeCreateLoad = recentLoads.find(
+    (l) =>
+      isGameAccountCreateLoadType(l.load_type) &&
+      (l.status === "pending" || l.status === "processing")
+  );
+  const createLoadStuck = activeCreateLoad
+    ? Date.now() - new Date(activeCreateLoad.updated_at ?? activeCreateLoad.created_at).getTime() >
+      10 * 60 * 1000
+    : false;
+
+  function pendingCreateButtonLabel(): string {
+    if (!pendingCreate) {
+      return hasSavedAccount ? "Replace Account" : "Create Account";
+    }
+    if (activeCreateLoad?.admin_notes === "account_replace") return "Replacing account…";
+    if (hasSavedAccount) return "Previous request running…";
+    return "Creating account…";
+  }
+
+  async function handleCancelLoad(loadId: string) {
+    setCancellingId(loadId);
+    const result = await cancelMyGameLoad(loadId, game.slug);
+    if (result.error) toast.error(result.error);
+    else toast.success("Cancelled — click Replace Account again.");
+    void refreshLoads();
+    setCancellingId(null);
+  }
 
   async function handleCreateAccount(custom?: { username: string; password: string }) {
     if (hasSavedAccount) {
@@ -328,7 +441,7 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
 
   function activityLabel(load: GameLoadRequest) {
     if (isGameAccountCreateLoadType(load.load_type)) {
-      return "Create account";
+      return load.admin_notes === "account_replace" ? "Replace account" : "Create account";
     }
     if (load.load_type === "check_balance") {
       return load.status === "completed"
@@ -493,13 +606,7 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
               ) : (
                 <UserPlus className="h-4 w-4" />
               )}
-              {pendingCreate
-                ? hasSavedAccount
-                  ? "Replacing account…"
-                  : "Creating account…"
-                : hasSavedAccount
-                  ? "Replace Account"
-                  : "Create Account"}
+              {creating ? (hasSavedAccount ? "Replacing account…" : "Creating account…") : pendingCreateButtonLabel()}
             </button>
             <button
               type="button"
@@ -516,13 +623,64 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
 
         {hasSavedAccount && !customMode && (
           <p className="text-[11px] text-muted-foreground text-center">
-            One account per game — Replace gives you new login details only.
+            One account per game — Replace creates a new login on the game panel.
+          </p>
+        )}
+
+        {pendingCreate && activeCreateLoad && (
+          <p className="text-[11px] text-amber-200/80 text-center leading-relaxed">
+            An older bot request is still open ({activityLabel(activeCreateLoad)} ·{" "}
+            {activeCreateLoad.status}) — you do not need to click again.{" "}
+            <button
+              type="button"
+              onClick={() => void handleCancelLoad(activeCreateLoad.id)}
+              disabled={cancellingId === activeCreateLoad.id}
+              className="underline font-semibold text-amber-100 hover:text-white disabled:opacity-50"
+            >
+              {cancellingId === activeCreateLoad.id ? "Cancelling…" : "Cancel it"}
+            </button>{" "}
+            to unlock Replace Account.
+          </p>
+        )}
+
+        {anyPending && isAutomatedGameSlug(game.slug) && (
+          <p className="text-[11px] text-amber-200/90 text-center leading-relaxed rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+            Bot is processing your request. Keep the {game.name} bot running on your PC (Chrome on
+            agent panel +{" "}
+            <span className="font-mono">workers/{AUTOMATED_BOT_WORKER_DIR[game.slug]}</span>
+            {game.slug === "cash-frenzy" ? " · port 9229" : null}
+            {game.slug === "game-vault" ? " · port 9224" : null}
+            ).
+            {createLoadStuck && activeCreateLoad ? (
+              <>
+                {" "}
+                This job looks stuck —{" "}
+                <button
+                  type="button"
+                  onClick={() => void handleCancelLoad(activeCreateLoad.id)}
+                  disabled={cancellingId === activeCreateLoad.id}
+                  className="underline font-semibold text-amber-100 hover:text-white disabled:opacity-50"
+                >
+                  {cancellingId === activeCreateLoad.id ? "Cancelling…" : "Cancel it"}
+                </button>{" "}
+                then try Replace again.
+              </>
+            ) : null}
           </p>
         )}
 
         {!hasSavedAccount && !customMode && previewAccount && (
           <p className="text-xs text-muted-foreground text-center">
-            Will be created as <span className="font-mono text-emerald-300">{previewAccount}</span> (same password)
+            Will be created as <span className="font-mono text-emerald-300">{previewAccount}</span>{" "}
+            (same password)
+          </p>
+        )}
+
+        {hasSavedAccount && !customMode && previewAccount && usesNumberedAccounts && (
+          <p className="text-xs text-muted-foreground text-center">
+            Replace will create{" "}
+            <span className="font-mono text-emerald-300">{previewAccount}</span> (or the next free
+            number if that is taken)
           </p>
         )}
       </div>
@@ -726,7 +884,15 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
           {recentLoads.slice(0, 5).map((load) => (
             <div key={load.id} className="rounded-lg bg-black/20 px-3 py-2 text-xs">
               <div className="flex items-center justify-between gap-2">
-                <span>
+                <span
+                  className={
+                    load.status === "failed"
+                      ? "text-red-400"
+                      : load.status === "completed"
+                        ? "text-emerald-300"
+                        : undefined
+                  }
+                >
                   {activityLabel(load)}
                   {" · "}
                   {load.status}
@@ -735,6 +901,27 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
                   {formatRelativeTime(load.created_at)}
                 </span>
               </div>
+              {load.status === "failed" && load.error_message && (
+                <p className="text-red-400/90 mt-1 leading-snug">{load.error_message}</p>
+              )}
+              {(load.status === "pending" || load.status === "processing") &&
+                isAutomatedGameSlug(game.slug) && (
+                  <div className="text-muted-foreground mt-1 space-y-1">
+                    <p>
+                      Waiting for bot worker — start{" "}
+                      <span className="font-mono">workers/{AUTOMATED_BOT_WORKER_DIR[game.slug]}</span>{" "}
+                      on your machine if it is not running.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => void handleCancelLoad(load.id)}
+                      disabled={cancellingId === load.id}
+                      className="text-amber-300/90 underline hover:text-amber-200 disabled:opacity-50"
+                    >
+                      {cancellingId === load.id ? "Cancelling…" : "Cancel this request"}
+                    </button>
+                  </div>
+                )}
             </div>
           ))}
         </div>
