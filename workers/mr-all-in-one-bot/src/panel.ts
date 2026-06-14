@@ -543,8 +543,8 @@ export async function redeemAccount(
 
 /* ------------------------------------------------------- account creation */
 
-/** MR All In One requires at least $1 initial recharge on the Add user form or creation fails. */
-const CREATE_INITIAL_BALANCE = "1";
+/** Initial balance on the Add user form ($0 is accepted by the panel). */
+const CREATE_INITIAL_BALANCE = "0";
 
 const DUPLICATE_RE = /exist|already|taken|duplicate|repeat|in ?use|have used|used|登录名|重复|已存在/i;
 const VALIDATION_RE =

@@ -61,5 +61,5 @@ export function isWalletLoadEnabledForGame(slug: string): boolean {
   return Boolean(game && !game.upcoming);
 }
 
-/** Wallet → game load limits (can load any balance ≥ $1 up to available) */
-export const WALLET_LOAD_LIMITS = { min: 1, max: 500 } as const;
+/** Wallet → game load limits ($5 minimum load / partial redeem, up to $500) */
+export const WALLET_LOAD_LIMITS = { min: 5, max: 500 } as const;

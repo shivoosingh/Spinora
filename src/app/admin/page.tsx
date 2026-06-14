@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Users, Gamepad2, MessageSquare, TrendingUp, Star, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { AdminBroadcastNotice } from "@/components/admin/admin-broadcast-notice";
 
 export default async function AdminPage() {
   const supabase = await createClient();
@@ -60,6 +61,10 @@ export default async function AdminPage() {
         <Button variant="outline" asChild className="w-full sm:w-auto">
           <Link href="/admin/tasks">Review Tasks</Link>
         </Button>
+      </div>
+
+      <div className="mb-6 sm:mb-8">
+        <AdminBroadcastNotice />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

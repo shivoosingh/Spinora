@@ -1,4 +1,5 @@
 import type { Locator, Page } from "playwright";
+import { passwordForAccount } from "./credentials.js";
 import { isLoginPage, log, screenshot, waitForManualLogin } from "./panel-utils.js";
 
 const ADMIN_URL = process.env.VEGAS_ADMIN_URL?.trim() || "https://agent.lasvegassweeps.com/login";
@@ -314,10 +315,11 @@ export async function createAccount(
       continue;
     }
 
-    const outcome = await tryCreateOnce(page, username, password);
+    const pwd = passwordForAccount(username, password);
+    const outcome = await tryCreateOnce(page, username, pwd);
     if (outcome.status === "created") {
       log("create", `created ${username}`);
-      return { username, password };
+      return { username, password: pwd };
     }
     if (outcome.status === "duplicate") {
       continue; // name got taken in a race — try the next variant

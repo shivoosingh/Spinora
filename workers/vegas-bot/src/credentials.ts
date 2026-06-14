@@ -34,6 +34,11 @@ export function buildVegasCredentials(profile: {
   return { username, password: username };
 }
 
+/** Login password — defaults to username when the user did not pick one. */
+export function passwordForAccount(username: string, preferred?: string | null): string {
+  return preferred?.trim() || username;
+}
+
 /** Random suffix from an unambiguous alphabet (no 0/o/1/l/i). */
 function randomSuffix(len: number): string {
   const chars = "abcdefghjkmnpqrstuvwxyz23456789";

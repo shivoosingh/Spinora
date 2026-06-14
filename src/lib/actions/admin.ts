@@ -124,6 +124,53 @@ export async function sendAdminMessage(
   return { success: true, message: inserted };
 }
 
+const DEFAULT_MAINTENANCE_NOTICE = {
+  title: "Site under maintenance",
+  message:
+    "Spinora is currently under maintenance. No requests (loads, redeems, new accounts, or deposits) will be approved until further notice. Thank you for your patience — we will update you when service resumes.",
+} as const;
+
+/** Send an in-app notification (+ support chat message) to every non-admin user. */
+export async function broadcastAdminNotice(input: {
+  title: string;
+  message: string;
+  type?: "info" | "success" | "warning" | "promo";
+  sendChat?: boolean;
+}) {
+  const auth = await requireAdmin();
+  if (auth.error) return { error: auth.error };
+
+  const title = input.title.trim();
+  const message = input.message.trim();
+  if (!title || !message) return { error: "Title and message are required" };
+
+  const { data, error } = await auth.supabase.rpc("admin_broadcast_to_all_users", {
+    p_title: title,
+    p_message: message,
+    p_type: input.type ?? "warning",
+    p_send_chat: input.sendChat ?? true,
+  });
+
+  if (error) {
+    if (error.message.includes("admin_broadcast_to_all_users")) {
+      return { error: "Run supabase/admin-broadcast-message.sql in Supabase SQL Editor first." };
+    }
+    return { error: error.message };
+  }
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/chat");
+  return { success: true, count: Number(data ?? 0) };
+}
+
+export async function broadcastMaintenanceNotice() {
+  return broadcastAdminNotice({
+    ...DEFAULT_MAINTENANCE_NOTICE,
+    type: "warning",
+    sendChat: true,
+  });
+}
+
 export interface AdminUserSearchResult {
   id: string;
   full_name: string | null;
