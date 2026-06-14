@@ -263,7 +263,7 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
   const depositRedeemRulesActive =
     redeemWalletType === "current" &&
     depositRollover !== null &&
-    depositRollover.totalDepositLoads > 0;
+    depositRollover.activeDepositAmount > 0;
 
   const redeemMaxAllowed = depositRedeemRulesActive
     ? Math.min(WALLET_LOAD_LIMITS.max, depositRollover.maxRedeemRemaining)
@@ -445,13 +445,13 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
       }
       if (lastKnownBalance === null && !pendingCheck) {
         toast.error(
-          `Check your live game balance first — you need at least $${depositRollover.minGameBalance.toFixed(2)} in game (${GAME_BONUS_RULES.redeemMin}x deposit loads) to redeem.`
+          `Check your live game balance first — you need at least $${depositRollover.minGameBalance.toFixed(2)} in game (${GAME_BONUS_RULES.redeemMin}x your $${depositRollover.activeDepositAmount.toFixed(2)} deposit) to redeem.`
         );
         return;
       }
       if (depositRedeemBlocked) {
         toast.error(
-          `Need at least $${depositRollover.minGameBalance.toFixed(2)} in game (${GAME_BONUS_RULES.redeemMin}x your $${depositRollover.totalDepositLoads.toFixed(2)} deposit loads). Last checked: $${lastKnownBalance!.toFixed(2)}.`
+          `Need at least $${depositRollover.minGameBalance.toFixed(2)} in game (${GAME_BONUS_RULES.redeemMin}x your $${depositRollover.activeDepositAmount.toFixed(2)} deposit). Last checked: $${lastKnownBalance!.toFixed(2)}.`
         );
         return;
       }
@@ -863,13 +863,13 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
 
             {depositRedeemRulesActive && depositRollover && (
               <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90 space-y-1">
-                <p className="font-semibold text-amber-200">Deposit redeem rollover</p>
+                <p className="font-semibold text-amber-200">Deposit redeem rollover (this deposit)</p>
                 <p>
-                  Loaded ${depositRollover.totalDepositLoads.toFixed(2)} from Total Deposit → need{" "}
+                  Last deposit load ${depositRollover.activeDepositAmount.toFixed(2)} → need{" "}
                   <span className="font-semibold">${depositRollover.minGameBalance.toFixed(2)}</span>{" "}
                   in game to redeem ({GAME_BONUS_RULES.redeemMin}x min), up to{" "}
                   <span className="font-semibold">${depositRollover.maxRedeemRemaining.toFixed(2)}</span>{" "}
-                  remaining ({GAME_BONUS_RULES.redeemMax}x max).
+                  remaining ({GAME_BONUS_RULES.redeemMax}x max for this deposit).
                 </p>
                 {lastKnownBalance !== null ? (
                   <p>

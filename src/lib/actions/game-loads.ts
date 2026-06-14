@@ -279,33 +279,33 @@ export async function requestGameRedeem(input: {
   const walletType = input.walletType ?? "current";
 
   if (walletType === "current") {
-    const rollover = await fetchDepositRolloverTotalsForUser(supabase, user.id, input.gameSlug);
+    const rollover = await fetchActiveDepositRolloverForUser(supabase, user.id, input.gameSlug);
     const bounds = depositRolloverBounds(rollover);
 
-    if (bounds.totalDepositLoads > 0) {
+    if (bounds.activeDepositAmount > 0) {
       const lastBalance = await fetchLastGameBalanceForUser(supabase, user.id, input.gameSlug);
 
       if (lastBalance === null) {
         return {
-          error: `Check your live game balance first — you need at least $${bounds.minGameBalance.toFixed(2)} in game (3x your $${bounds.totalDepositLoads.toFixed(2)} deposit loads) to redeem.`,
+          error: `Check your live game balance first — you need at least $${bounds.minGameBalance.toFixed(2)} in game (3x your $${bounds.activeDepositAmount.toFixed(2)} deposit) to redeem.`,
         };
       }
 
       if (lastBalance < bounds.minGameBalance) {
         return {
-          error: `Need at least $${bounds.minGameBalance.toFixed(2)} in game (3x your $${bounds.totalDepositLoads.toFixed(2)} deposit loads). Last checked: $${lastBalance.toFixed(2)}.`,
+          error: `Need at least $${bounds.minGameBalance.toFixed(2)} in game (3x your $${bounds.activeDepositAmount.toFixed(2)} deposit). Last checked: $${lastBalance.toFixed(2)}.`,
         };
       }
 
       if (bounds.maxRedeemRemaining <= 0) {
-        return { error: "You have reached the 8x redeem limit for your deposit loads." };
+        return { error: "You have reached the 8x redeem limit for this deposit." };
       }
 
       if (!redeemAll) {
         const amount = Math.round((input.amount ?? 0) * 100) / 100;
         if (amount > bounds.maxRedeemRemaining) {
           return {
-            error: `Maximum redeem is $${bounds.maxRedeemRemaining.toFixed(2)} (8x deposit loads minus prior redeems).`,
+            error: `Maximum redeem is $${bounds.maxRedeemRemaining.toFixed(2)} (8x this deposit minus prior redeems).`,
           };
         }
       }
@@ -360,7 +360,7 @@ export async function requestGameRedeem(input: {
   return { success: true, requestId: requestId as string };
 }
 
-async function fetchDepositRolloverTotalsForUser(
+async function fetchActiveDepositRolloverForUser(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
   gameSlug: string
@@ -371,38 +371,59 @@ async function fetchDepositRolloverTotalsForUser(
   });
 
   if (!error && data?.length) {
-    const row = data[0] as { total_loads: number; total_redeemed: number };
+    const row = data[0] as {
+      active_load_amount?: number;
+      redeemed_since_active?: number;
+      total_loads?: number;
+      total_redeemed?: number;
+    };
     return {
-      totalDepositLoads: Number(row.total_loads ?? 0),
-      totalDepositRedeemed: Number(row.total_redeemed ?? 0),
+      activeDepositAmount: Number(
+        row.active_load_amount ?? row.total_loads ?? 0
+      ),
+      redeemedSinceActiveDeposit: Number(
+        row.redeemed_since_active ?? row.total_redeemed ?? 0
+      ),
     };
   }
 
-  const [{ data: loads }, { data: redeems }] = await Promise.all([
-    supabase
-      .from("game_load_requests")
-      .select("amount")
-      .eq("user_id", userId)
-      .eq("game_slug", gameSlug)
-      .eq("wallet_type", "current")
-      .in("load_type", [...DEPOSIT_LOAD_TYPES])
-      .eq("status", "completed"),
-    supabase
-      .from("game_load_requests")
-      .select("amount")
-      .eq("user_id", userId)
-      .eq("game_slug", gameSlug)
-      .eq("wallet_type", "current")
-      .eq("load_type", "redeem")
-      .eq("status", "completed"),
-  ]);
+  const { data: latestLoad } = await supabase
+    .from("game_load_requests")
+    .select("amount, completed_at")
+    .eq("user_id", userId)
+    .eq("game_slug", gameSlug)
+    .eq("wallet_type", "current")
+    .in("load_type", [...DEPOSIT_LOAD_TYPES])
+    .eq("status", "completed")
+    .order("completed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!latestLoad) {
+    return { activeDepositAmount: 0, redeemedSinceActiveDeposit: 0 };
+  }
+
+  let redeemQuery = supabase
+    .from("game_load_requests")
+    .select("amount")
+    .eq("user_id", userId)
+    .eq("game_slug", gameSlug)
+    .eq("wallet_type", "current")
+    .eq("load_type", "redeem")
+    .eq("status", "completed");
+
+  if (latestLoad.completed_at) {
+    redeemQuery = redeemQuery.gte("completed_at", latestLoad.completed_at);
+  }
+
+  const { data: redeems } = await redeemQuery;
 
   const sum = (rows: { amount: number }[] | null) =>
     Math.round((rows ?? []).reduce((acc, row) => acc + Number(row.amount ?? 0), 0) * 100) / 100;
 
   return {
-    totalDepositLoads: sum(loads),
-    totalDepositRedeemed: sum(redeems),
+    activeDepositAmount: Math.round(Number(latestLoad.amount ?? 0) * 100) / 100,
+    redeemedSinceActiveDeposit: sum(redeems),
   };
 }
 
@@ -435,8 +456,8 @@ export async function getDepositRolloverForGame(
   } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const totals = await fetchDepositRolloverTotalsForUser(supabase, user.id, gameSlug);
-  return depositRolloverBounds(totals);
+  const rollover = await fetchActiveDepositRolloverForUser(supabase, user.id, gameSlug);
+  return depositRolloverBounds(rollover);
 }
 
 export async function getMyGameLoads(gameSlug?: string) {

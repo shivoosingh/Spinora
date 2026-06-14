@@ -1,41 +1,52 @@
--- Deposit-wallet redeem rollover: 3x min game balance, 8x max redeem vs total deposit loads.
+-- Deposit-wallet redeem rollover: 3x min / 8x max per individual deposit load (not summed).
 -- Run in Supabase SQL Editor after game-load-minimum-5.sql
 
 CREATE OR REPLACE FUNCTION public.get_deposit_rollover_totals(
   p_user_id UUID,
   p_game_slug TEXT
 )
-RETURNS TABLE (total_loads NUMERIC, total_redeemed NUMERIC)
+RETURNS TABLE (active_load_amount NUMERIC, redeemed_since_active NUMERIC)
 LANGUAGE plpgsql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
+DECLARE
+  v_active_amount NUMERIC := 0;
+  v_active_at TIMESTAMPTZ;
+  v_redeemed_since NUMERIC := 0;
 BEGIN
   IF auth.uid() IS NOT NULL AND auth.uid() <> p_user_id THEN
     RAISE EXCEPTION 'Unauthorized';
   END IF;
 
-  RETURN QUERY
-  SELECT
-    COALESCE((
-      SELECT SUM(amount)
-      FROM game_load_requests
-      WHERE user_id = p_user_id
-        AND game_slug = p_game_slug
-        AND wallet_type = 'current'
-        AND load_type IN ('load', 'reload')
-        AND status = 'completed'
-    ), 0),
-    COALESCE((
-      SELECT SUM(amount)
-      FROM game_load_requests
-      WHERE user_id = p_user_id
-        AND game_slug = p_game_slug
-        AND wallet_type = 'current'
-        AND load_type = 'redeem'
-        AND status = 'completed'
-    ), 0);
+  SELECT amount, completed_at
+  INTO v_active_amount, v_active_at
+  FROM game_load_requests
+  WHERE user_id = p_user_id
+    AND game_slug = p_game_slug
+    AND wallet_type = 'current'
+    AND load_type IN ('load', 'reload')
+    AND status = 'completed'
+  ORDER BY completed_at DESC NULLS LAST, created_at DESC
+  LIMIT 1;
+
+  IF v_active_amount IS NULL OR v_active_amount <= 0 THEN
+    RETURN QUERY SELECT 0::NUMERIC, 0::NUMERIC;
+    RETURN;
+  END IF;
+
+  SELECT COALESCE(SUM(amount), 0)
+  INTO v_redeemed_since
+  FROM game_load_requests
+  WHERE user_id = p_user_id
+    AND game_slug = p_game_slug
+    AND wallet_type = 'current'
+    AND load_type = 'redeem'
+    AND status = 'completed'
+    AND (v_active_at IS NULL OR completed_at >= v_active_at);
+
+  RETURN QUERY SELECT v_active_amount, v_redeemed_since;
 END;
 $$;
 
@@ -59,8 +70,8 @@ DECLARE
   v_user_id UUID := auth.uid();
   v_request_id UUID;
   v_min_redeem NUMERIC := 5;
-  v_total_loads NUMERIC;
-  v_total_redeemed NUMERIC;
+  v_active_load NUMERIC;
+  v_redeemed_since NUMERIC;
   v_max_remaining NUMERIC;
   v_min_game_balance NUMERIC;
   v_last_balance NUMERIC;
@@ -94,13 +105,13 @@ BEGIN
   END IF;
 
   IF p_wallet_type = 'current' THEN
-    SELECT total_loads, total_redeemed
-    INTO v_total_loads, v_total_redeemed
+    SELECT active_load_amount, redeemed_since_active
+    INTO v_active_load, v_redeemed_since
     FROM public.get_deposit_rollover_totals(v_user_id, p_game_slug);
 
-    IF v_total_loads > 0 THEN
-      v_min_game_balance := v_total_loads * 3;
-      v_max_remaining := GREATEST(0, v_total_loads * 8 - v_total_redeemed);
+    IF v_active_load > 0 THEN
+      v_min_game_balance := v_active_load * 3;
+      v_max_remaining := GREATEST(0, v_active_load * 8 - v_redeemed_since);
 
       SELECT amount INTO v_last_balance
       FROM game_load_requests
@@ -113,17 +124,17 @@ BEGIN
 
       IF v_last_balance IS NULL OR v_last_balance < v_min_game_balance THEN
         RAISE EXCEPTION
-          'Need at least $% in game (3x your $% deposit loads). Check your live game balance first.',
+          'Need at least $% in game (3x your $% deposit). Check your live game balance first.',
           v_min_game_balance,
-          v_total_loads;
+          v_active_load;
       END IF;
 
       IF v_max_remaining <= 0 THEN
-        RAISE EXCEPTION 'You have reached the 8x redeem limit for your deposit loads';
+        RAISE EXCEPTION 'You have reached the 8x redeem limit for this deposit';
       END IF;
 
       IF NOT p_redeem_all AND p_amount > v_max_remaining THEN
-        RAISE EXCEPTION 'Maximum redeem is $% (8x deposit loads minus prior redeems)', v_max_remaining;
+        RAISE EXCEPTION 'Maximum redeem is $% (8x this deposit minus prior redeems)', v_max_remaining;
       END IF;
     END IF;
   END IF;

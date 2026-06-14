@@ -7,25 +7,29 @@ export const DEPOSIT_REDEEM_MAX_MULT = GAME_BONUS_RULES.redeemMax;
 /** Completed game_load_requests rows that count toward deposit rollover. */
 export const DEPOSIT_LOAD_TYPES = ["load", "reload"] as const;
 
-export interface DepositRolloverTotals {
-  totalDepositLoads: number;
-  totalDepositRedeemed: number;
+/** Rollover for the most recent single deposit load (not summed across loads). */
+export interface ActiveDepositRollover {
+  activeDepositAmount: number;
+  redeemedSinceActiveDeposit: number;
 }
 
-export interface DepositRolloverBounds extends DepositRolloverTotals {
+export interface DepositRolloverBounds extends ActiveDepositRollover {
   minGameBalance: number;
   maxRedeemRemaining: number;
 }
 
-export function depositRolloverBounds(totals: DepositRolloverTotals): DepositRolloverBounds {
-  const totalDepositLoads = roundMoney(totals.totalDepositLoads);
-  const totalDepositRedeemed = roundMoney(totals.totalDepositRedeemed);
+export function depositRolloverBounds(rollover: ActiveDepositRollover): DepositRolloverBounds {
+  const activeDepositAmount = roundMoney(rollover.activeDepositAmount);
+  const redeemedSinceActiveDeposit = roundMoney(rollover.redeemedSinceActiveDeposit);
   return {
-    totalDepositLoads,
-    totalDepositRedeemed,
-    minGameBalance: roundMoney(totalDepositLoads * DEPOSIT_REDEEM_MIN_MULT),
+    activeDepositAmount,
+    redeemedSinceActiveDeposit,
+    minGameBalance: roundMoney(activeDepositAmount * DEPOSIT_REDEEM_MIN_MULT),
     maxRedeemRemaining: roundMoney(
-      Math.max(0, totalDepositLoads * DEPOSIT_REDEEM_MAX_MULT - totalDepositRedeemed)
+      Math.max(
+        0,
+        activeDepositAmount * DEPOSIT_REDEEM_MAX_MULT - redeemedSinceActiveDeposit
+      )
     ),
   };
 }
@@ -38,18 +42,18 @@ export type DepositRedeemResolution =
   | { ok: true; amount: number }
   | { ok: false; error: string };
 
-/** Resolve redeem amount for deposit-wallet redeems (3x min balance, 8x max cap). */
+/** Resolve redeem amount for deposit-wallet redeems (3x min balance, 8x max cap per deposit). */
 export function resolveDepositRedeemAmount(input: {
   gameBalance: number;
   requestedAmount: number;
   redeemAll: boolean;
-  totals: DepositRolloverTotals;
+  rollover: ActiveDepositRollover;
 }): DepositRedeemResolution {
   const balance = roundMoney(input.gameBalance);
   const requested = roundMoney(input.requestedAmount);
-  const bounds = depositRolloverBounds(input.totals);
+  const bounds = depositRolloverBounds(input.rollover);
 
-  if (bounds.totalDepositLoads <= 0) {
+  if (bounds.activeDepositAmount <= 0) {
     if (input.redeemAll) {
       if (balance <= 0) return { ok: false, error: "No balance to redeem" };
       return { ok: true, amount: balance };
@@ -67,14 +71,14 @@ export function resolveDepositRedeemAmount(input: {
   if (balance < bounds.minGameBalance) {
     return {
       ok: false,
-      error: `Need at least $${bounds.minGameBalance.toFixed(2)} in game (${DEPOSIT_REDEEM_MIN_MULT}x your $${bounds.totalDepositLoads.toFixed(2)} deposit loads). Current balance: $${balance.toFixed(2)}.`,
+      error: `Need at least $${bounds.minGameBalance.toFixed(2)} in game (${DEPOSIT_REDEEM_MIN_MULT}x your $${bounds.activeDepositAmount.toFixed(2)} deposit). Current balance: $${balance.toFixed(2)}.`,
     };
   }
 
   if (bounds.maxRedeemRemaining <= 0) {
     return {
       ok: false,
-      error: `You have reached the ${DEPOSIT_REDEEM_MAX_MULT}x redeem limit for your deposit loads.`,
+      error: `You have reached the ${DEPOSIT_REDEEM_MAX_MULT}x redeem limit for this deposit.`,
     };
   }
 
@@ -86,7 +90,7 @@ export function resolveDepositRedeemAmount(input: {
     if (amount > bounds.maxRedeemRemaining) {
       return {
         ok: false,
-        error: `Maximum redeem is $${bounds.maxRedeemRemaining.toFixed(2)} (${DEPOSIT_REDEEM_MAX_MULT}x deposit loads minus prior redeems).`,
+        error: `Maximum redeem is $${bounds.maxRedeemRemaining.toFixed(2)} (${DEPOSIT_REDEEM_MAX_MULT}x this deposit minus prior redeems).`,
       };
     }
     if (amount > balance) {
