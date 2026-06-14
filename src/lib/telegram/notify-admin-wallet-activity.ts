@@ -23,11 +23,16 @@ export async function notifyAdminOfWalletActivity(input: {
   redeemAll?: boolean;
   requestId: string;
 }): Promise<void> {
-  if (!isTelegramConfigured()) return;
-  if (await isAnyAdminOnline()) return;
+  if (!isTelegramConfigured()) {
+    console.error("[telegram] wallet activity skipped: TELEGRAM_BOT_TOKEN or TELEGRAM_ADMIN_CHAT_ID not set");
+    return;
+  }
 
   const admin = createAdminClient();
-  if (!admin) return;
+  if (!admin) {
+    console.error("[telegram] wallet activity skipped: SUPABASE_SERVICE_ROLE_KEY not set on server");
+    return;
+  }
 
   const { data: sender } = await admin
     .from("profiles")
@@ -42,7 +47,6 @@ export async function notifyAdminOfWalletActivity(input: {
   const email = sender.email ?? "unknown";
   const { emoji, title } = KIND_LABELS[input.kind];
   const loadsUrl = `${SITE_URL}/admin/game-loads`;
-  const transactionsUrl = `${SITE_URL}/admin/transactions`;
 
   const lines = [
     `${emoji} <b>${title}</b>`,
@@ -70,14 +74,13 @@ export async function notifyAdminOfWalletActivity(input: {
     }
   }
 
-  lines.push(
-    "",
-    `<a href="${loadsUrl}">Open Wallet Loads</a>`,
-    `<a href="${transactionsUrl}">Open Transactions</a>`
-  );
+  lines.push("", `<a href="${loadsUrl}">Open Wallet Loads in Spinora</a>`);
 
-  const result = await sendTelegramMessage(lines.join("\n"));
+  // Same as deposit alerts: always send. Silent push when an admin tab is open.
+  const disableNotification = await isAnyAdminOnline();
+
+  const result = await sendTelegramMessage(lines.join("\n"), { disableNotification });
   if (!result.ok) {
-    console.warn("[telegram] wallet activity notify failed:", result.error);
+    console.error("[telegram] wallet activity notify failed:", result.error);
   }
 }
