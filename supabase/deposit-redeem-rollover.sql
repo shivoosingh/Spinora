@@ -1,6 +1,8 @@
 -- Deposit-wallet redeem rollover: 3x min / 8x max per individual deposit load (not summed).
 -- Run in Supabase SQL Editor after game-load-minimum-5.sql
 
+DROP FUNCTION IF EXISTS public.get_deposit_rollover_totals(UUID, TEXT);
+
 CREATE OR REPLACE FUNCTION public.get_deposit_rollover_totals(
   p_user_id UUID,
   p_game_slug TEXT
