@@ -56,6 +56,9 @@ export default async function AdminPage() {
           <Link href="/admin/users">Manage Users</Link>
         </Button>
         <Button variant="outline" asChild className="w-full sm:w-auto">
+          <Link href="/admin/transactions">View Transactions</Link>
+        </Button>
+        <Button variant="outline" asChild className="w-full sm:w-auto">
           <Link href="/admin/reviews">Manage Reviews</Link>
         </Button>
         <Button variant="outline" asChild className="w-full sm:w-auto">

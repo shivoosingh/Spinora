@@ -53,7 +53,7 @@ const adminLinks = [
   { href: "/admin", label: "Admin Panel", icon: Shield },
   { href: "/admin/chat", label: "Customer Chat", icon: MessageSquare },
   { href: "/admin/users", label: "Users", icon: Users },
-  { href: "/admin/bonus-transactions", label: "Bonus Transactions", icon: History },
+  { href: "/admin/transactions", label: "Transactions", icon: History },
   { href: "/admin/game-loads", label: "Wallet Loads", icon: Banknote },
   { href: "/admin/requests", label: "Game Requests", icon: Gamepad2 },
   { href: "/admin/deposits", label: "Deposits", icon: Banknote },
