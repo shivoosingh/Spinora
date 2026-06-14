@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { AdminWalletLoadsPanels } from "@/components/admin/admin-wallet-loads-panels";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export default async function AdminGameLoadsPage() {
   const supabase = await createClient();
 

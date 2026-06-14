@@ -88,16 +88,18 @@ function LoadsPanel({
   icon: Icon,
   loads,
   emptyHint,
+  accentClass,
 }: {
   title: string;
   icon: typeof Wallet;
   loads: AdminGameLoadRow[];
   emptyHint: string;
+  accentClass?: string;
 }) {
   const pending = loads.filter((l) => l.status === "pending" || l.status === "processing").length;
 
   return (
-    <Card className="flex flex-col min-h-[360px]">
+    <Card className={cn("flex flex-col min-h-[360px] border-2", accentClass)}>
       <CardHeader className="pb-3">
         <CardTitle className="text-base flex items-center gap-2">
           <Icon className="h-4 w-4 text-primary" />
@@ -254,16 +256,18 @@ export function AdminWalletLoadsPanels({ loads: initialLoads, users }: AdminWall
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <LoadsPanel
-          title="Total Deposit"
+          title="Total Deposit — loads & redeems"
           icon={Wallet}
           loads={depositLoads}
           emptyHint="No deposit wallet loads or redeems yet."
+          accentClass="border-emerald-500/30"
         />
         <LoadsPanel
-          title="Bonus Wallet"
+          title="Bonus Wallet — loads & redeems"
           icon={Gift}
           loads={bonusLoads}
           emptyHint="No bonus wallet loads or redeems yet."
+          accentClass="border-violet-500/30"
         />
       </div>
     </div>
