@@ -98,7 +98,7 @@ export function HomeHeader({ onSearchClick, onMenuClick, assumeLoggedIn = false 
           <>
             <Link
               href="/login"
-              className="hidden sm:inline text-sm font-medium text-muted-foreground hover:text-white transition-colors px-2 shrink-0"
+              className="inline text-xs sm:text-sm font-medium text-muted-foreground hover:text-white transition-colors px-1.5 sm:px-2 shrink-0 whitespace-nowrap"
             >
               Sign In
             </Link>
