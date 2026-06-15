@@ -29,6 +29,7 @@ const SOURCE_LABELS: Record<string, string> = {
   game_load: "Game load",
   game_load_refund: "Load refund",
   game_redeem: "Game redeem",
+  deposit: "Deposit",
   admin: "Admin adjustment",
   spin: "Spin prize",
   daily_task: "Daily task",
@@ -74,7 +75,7 @@ export function categorizeAdminTransactionPanel(tx: {
     ) {
       return "deposit";
     }
-    if (source === "admin") return "deposit";
+    if (source === "admin" || source === "deposit") return "deposit";
   }
 
   return "bonus";
@@ -90,13 +91,14 @@ export function gameLoadSummary(load: BonusGameLoadRow): string {
   return `Load $${Number(load.amount).toFixed(2)} · ${load.game_name} (bonus wallet)`;
 }
 
-/** Panel header totals — redeems are returns, not new credits. */
+/** Panel header totals — net loads to games; redeems are cashout only, not load refunds. */
 export function walletColumnSummaryStats(
   transactions: Array<{ source: string; transaction_type: string; amount: number }>
 ) {
   let loadsOut = 0;
   let creditsIn = 0;
   let redeemedBack = 0;
+  let loadRefunds = 0;
 
   for (const row of transactions) {
     const amount = Number(row.amount);
@@ -104,10 +106,12 @@ export function walletColumnSummaryStats(
       loadsOut += amount;
       continue;
     }
-    if (
-      (row.source === "game_redeem" || row.source === "game_load_refund") &&
-      row.transaction_type === "credit"
-    ) {
+    if (row.source === "game_load_refund" && row.transaction_type === "credit") {
+      loadRefunds += amount;
+      loadsOut -= amount;
+      continue;
+    }
+    if (row.source === "game_redeem" && row.transaction_type === "credit") {
       redeemedBack += amount;
       continue;
     }
@@ -116,5 +120,5 @@ export function walletColumnSummaryStats(
     }
   }
 
-  return { loadsOut, creditsIn, redeemedBack };
+  return { loadsOut: Math.max(0, loadsOut), creditsIn, redeemedBack, loadRefunds };
 }

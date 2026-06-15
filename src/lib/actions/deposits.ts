@@ -17,6 +17,7 @@ export interface DepositRequestRow {
   proof_url: string;
   status: RequestStatus;
   admin_notes: string | null;
+  wallet_credited?: boolean;
   created_at: string;
   user?: { full_name: string | null; email: string } | null;
 }
@@ -107,7 +108,8 @@ export async function getAdminDepositRequests(): Promise<DepositRequestRow[]> {
 export async function updateDepositStatus(
   depositId: string,
   status: RequestStatus,
-  adminNotes?: string
+  adminNotes?: string,
+  creditAmount?: number
 ) {
   const supabase = await createClient();
   const {
@@ -124,34 +126,68 @@ export async function updateDepositStatus(
 
   const { data: existing } = await supabase
     .from("deposit_requests")
-    .select("user_id, game_name, payment_method, amount")
+    .select("user_id, game_name, payment_method, amount, status, wallet_credited")
     .eq("id", depositId)
     .single();
 
-  const update: Record<string, string | null> = { status };
-  if (adminNotes?.trim()) update.admin_notes = adminNotes.trim();
+  if (!existing) return { error: "Deposit request not found" };
 
-  const { error } = await supabase
-    .from("deposit_requests")
-    .update({
-      ...update,
-      reviewed_by: user.id,
-      reviewed_at: new Date().toISOString(),
-    })
-    .eq("id", depositId);
+  if (status === "completed") {
+    if (existing.status === "completed" || existing.wallet_credited) {
+      return { error: "Deposit already completed" };
+    }
 
-  if (error) return { error: error.message };
+    const amount =
+      creditAmount != null && !Number.isNaN(creditAmount) && creditAmount > 0
+        ? Math.round(creditAmount * 100) / 100
+        : existing.amount != null && existing.amount > 0
+          ? Number(existing.amount)
+          : null;
 
-  if (existing) {
+    if (amount == null || amount <= 0) {
+      return { error: "Enter the deposit amount before confirming." };
+    }
+
     const method = getDepositMethod(existing.payment_method as DepositPaymentMethodId);
-    if (status === "completed") {
-      await createNotification(
-        existing.user_id,
-        "Deposit confirmed! 💰",
-        `Your ${existing.game_name} deposit via ${method?.label ?? existing.payment_method} has been credited.`,
-        "success"
-      );
-    } else if (status === "rejected") {
+    const methodLabel = method?.label ?? existing.payment_method;
+
+    const { error: rpcError } = await supabase.rpc("complete_deposit_request", {
+      p_deposit_id: depositId,
+      p_amount: amount,
+      p_admin_notes: adminNotes?.trim() ?? null,
+    });
+
+    if (rpcError) {
+      if (rpcError.code === "42883" || rpcError.message.includes("Could not find the function")) {
+        return {
+          error: "Deposit wallet credit not set up. Run supabase/deposit-wallet-credit.sql in Supabase.",
+        };
+      }
+      return { error: rpcError.message };
+    }
+
+    await createNotification(
+      existing.user_id,
+      "Deposit confirmed! 💰",
+      `$${amount.toFixed(2)} has been added to your Total Deposit wallet (${existing.game_name} · ${methodLabel}).`,
+      "success"
+    );
+  } else {
+    const update: Record<string, string | null> = { status };
+    if (adminNotes?.trim()) update.admin_notes = adminNotes.trim();
+
+    const { error } = await supabase
+      .from("deposit_requests")
+      .update({
+        ...update,
+        reviewed_by: user.id,
+        reviewed_at: new Date().toISOString(),
+      })
+      .eq("id", depositId);
+
+    if (error) return { error: error.message };
+
+    if (status === "rejected") {
       await createNotification(
         existing.user_id,
         "Deposit issue",
@@ -163,5 +199,7 @@ export async function updateDepositStatus(
 
   revalidatePath("/admin/deposits");
   revalidatePath("/dashboard/deposits");
+  revalidatePath("/dashboard");
+  revalidatePath("/admin/transactions");
   return { success: true };
 }

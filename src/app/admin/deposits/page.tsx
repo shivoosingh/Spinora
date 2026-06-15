@@ -41,7 +41,7 @@ export default async function AdminDepositsPage({
       <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold">Deposit Requests</h1>
         <p className="text-muted-foreground text-sm sm:text-base">
-          Review payment screenshots and confirm player deposits
+          Review payment screenshots and confirm deposits — confirming credits the user&apos;s Total Deposit wallet
         </p>
       </div>
 
@@ -78,7 +78,11 @@ export default async function AdminDepositsPage({
                       )}
                       <p className="text-xs text-muted-foreground">{formatDate(dep.created_at)}</p>
                     </div>
-                    <DepositActions depositId={dep.id} currentStatus={dep.status as RequestStatus} />
+                    <DepositActions
+                      depositId={dep.id}
+                      currentStatus={dep.status as RequestStatus}
+                      amount={dep.amount != null ? Number(dep.amount) : null}
+                    />
                   </div>
                 </CardContent>
               </Card>

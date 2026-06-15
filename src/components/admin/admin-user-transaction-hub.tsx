@@ -74,7 +74,8 @@ function WalletColumn({
   transactions: AdminTransactionRow[];
   emptyHint: string;
 }) {
-  const { loadsOut, creditsIn, redeemedBack } = walletColumnSummaryStats(transactions);
+  const { loadsOut, creditsIn, redeemedBack, loadRefunds } =
+    walletColumnSummaryStats(transactions);
 
   return (
     <Card className="flex flex-col min-h-[320px]">
@@ -88,6 +89,9 @@ function WalletColumn({
           {loadsOut > 0 && <span className="text-amber-400">Loads out: −${loadsOut.toFixed(2)}</span>}
           {creditsIn > 0 && (
             <span className="text-emerald-400">Credits in: +${creditsIn.toFixed(2)}</span>
+          )}
+          {loadRefunds > 0 && (
+            <span className="text-muted-foreground">Load refunds: +${loadRefunds.toFixed(2)}</span>
           )}
           {redeemedBack > 0 && (
             <span className="text-sky-400">Redeemed back: +${redeemedBack.toFixed(2)}</span>
