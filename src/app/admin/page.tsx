@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
-import { Users, MessageSquare, Star, Target, Banknote, History } from "lucide-react";
+import { Users, MessageSquare, Star, Target, Banknote, History, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AdminBroadcastNotice } from "@/components/admin/admin-broadcast-notice";
@@ -15,6 +15,7 @@ export default async function AdminPage() {
     { count: conversationCount },
     { count: reviewCount },
     { count: pendingTasks },
+    { count: pendingDeposits },
   ] = await Promise.all([
     supabase.from("profiles").select("*", { count: "exact", head: true }),
     supabase
@@ -26,6 +27,10 @@ export default async function AdminPage() {
     supabase.from("conversations").select("*", { count: "exact", head: true }).eq("is_active", true),
     supabase.from("reviews").select("*", { count: "exact", head: true }),
     supabase.from("user_task_submissions").select("*", { count: "exact", head: true }).eq("status", "pending"),
+    supabase
+      .from("deposit_requests")
+      .select("*", { count: "exact", head: true })
+      .in("status", ["pending", "processing"]),
   ]);
 
   const stats = [
@@ -41,6 +46,12 @@ export default async function AdminPage() {
       label: "Transactions",
       value: transactionCount || 0,
       href: "/admin/transactions",
+    },
+    {
+      icon: Wallet,
+      label: "Pending Deposits",
+      value: pendingDeposits || 0,
+      href: "/admin/deposits?status=pending",
     },
     { icon: MessageSquare, label: "Active Chats", value: conversationCount || 0, href: "/admin/chat" },
     { icon: Star, label: "Reviews", value: reviewCount || 0, href: "/admin/reviews" },
@@ -66,6 +77,9 @@ export default async function AdminPage() {
         </Button>
         <Button variant="outline" asChild className="w-full sm:w-auto">
           <Link href="/admin/transactions">View Transactions</Link>
+        </Button>
+        <Button variant="outline" asChild className="w-full sm:w-auto">
+          <Link href="/admin/deposits">Deposits</Link>
         </Button>
         <Button variant="outline" asChild className="w-full sm:w-auto">
           <Link href="/admin/reviews">Manage Reviews</Link>

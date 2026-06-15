@@ -20,6 +20,7 @@ import {
   Menu,
   X,
   History,
+  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AnimatedLogo, AnimatedLogoText } from "@/components/ui/animated-logo";
@@ -55,7 +56,7 @@ const adminLinks = [
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/transactions", label: "Transactions", icon: History },
   { href: "/admin/game-loads", label: "Wallet Loads", icon: Banknote },
-  { href: "/admin/deposits", label: "Deposits", icon: Banknote },
+  { href: "/admin/deposits", label: "Deposits", icon: Wallet },
   { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/admin/reviews", label: "Reviews", icon: Star },
   { href: "/admin/tasks", label: "Task Review", icon: Target },
