@@ -60,6 +60,7 @@ export function GameLandingClient({
   const [accountStatus, setAccountStatus] = useState<"loading" | "none" | "has">(
     initialGameAccount?.game_username ? "has" : "loading"
   );
+  const [resolvedAccount, setResolvedAccount] = useState(initialGameAccount ?? null);
   const [winner, setWinner] = useState<GameWinner | null>(null);
   const [moreWinners, setMoreWinners] = useState(0);
   const [showAllWinners, setShowAllWinners] = useState(false);
@@ -105,19 +106,68 @@ export function GameLandingClient({
       return;
     }
     if (initialGameAccount?.game_username) {
+      setResolvedAccount(initialGameAccount);
       setAccountStatus("has");
       return;
     }
+
     let cancelled = false;
-    void (async () => {
+
+    async function resolveAccount() {
       const account = await getMyGameAccount(game.slug);
       if (cancelled) return;
-      setAccountStatus(account?.game_username ? "has" : "none");
-    })();
+      if (account?.game_username) {
+        setResolvedAccount({
+          game_username: account.game_username,
+          game_password: account.game_password,
+        });
+        setAccountStatus("has");
+        return;
+      }
+
+      if (!supabase) {
+        setAccountStatus("none");
+        return;
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (cancelled) return;
+      if (!user) {
+        setAccountStatus("none");
+        return;
+      }
+
+      const { data } = await supabase
+        .from("game_load_requests")
+        .select("game_username, game_password")
+        .eq("user_id", user.id)
+        .eq("game_slug", game.slug)
+        .eq("status", "completed")
+        .in("load_type", ["create_account", "new_account"])
+        .not("game_username", "is", null)
+        .order("completed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (data?.game_username) {
+        setResolvedAccount({
+          game_username: data.game_username,
+          game_password: data.game_password,
+        });
+        setAccountStatus("has");
+      } else {
+        setAccountStatus("none");
+      }
+    }
+
+    void resolveAccount();
     return () => {
       cancelled = true;
     };
-  }, [game.slug, game.upcoming, initialGameAccount?.game_username, walletLoadEnabled]);
+  }, [game.slug, game.upcoming, initialGameAccount, walletLoadEnabled, supabase]);
 
   useEffect(() => {
     if (!autoCreate || autoCreateAttempted.current) return;
@@ -156,13 +206,13 @@ export function GameLandingClient({
   const rules = GAME_BONUS_RULES;
   const showWalletPanel = Boolean(walletLoadEnabled && !game.upcoming);
   const hasAccount =
-    accountStatus === "has" || Boolean(initialGameAccount?.game_username);
+    accountStatus === "has" || Boolean(resolvedAccount?.game_username);
 
   const walletSection = showWalletPanel ? (
     <div ref={walletPanelRef} className="scroll-mt-24">
       <GameWalletLoadSection
         game={game}
-        initialAccount={initialGameAccount}
+        initialAccount={resolvedAccount}
         onAccountChange={handleAccountChange}
       />
     </div>
@@ -205,6 +255,9 @@ export function GameLandingClient({
           </div>
         </div>
       </section>
+
+      {/* Account panel — first thing after hero when wallet load is enabled */}
+      {walletSection}
 
       {/* Recent winners */}
       <section className="rounded-2xl border border-white/10 bg-[#1a1a1a] p-4 sm:p-5">
@@ -318,10 +371,7 @@ export function GameLandingClient({
         <p className="text-sm text-muted-foreground leading-relaxed">{game.bio}</p>
       </section>
 
-      {/* Account panel — always visible; credentials show here when account exists */}
-      {walletSection}
-
-      {/* Top button: Create Account for new users only — never Replace */}
+      {/* Create Account — only when user has no game login yet */}
       <section className="space-y-3">
         {!hasAccount && accountStatus === "none" && (
           <button
