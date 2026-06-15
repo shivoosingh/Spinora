@@ -15,6 +15,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { getMyGameAccount } from "@/lib/actions/game-loads";
 import {
   GAME_BONUS_RULES,
   getOtherGames,
@@ -99,6 +100,17 @@ export function GameLandingClient({
   }
 
   useEffect(() => {
+    if (initialGameAccount?.game_username || !walletLoadEnabled || game.upcoming) return;
+    void getMyGameAccount(game.slug).then((account) => {
+      if (account?.game_username) {
+        setAccountStatus("has");
+      } else {
+        setAccountStatus("none");
+      }
+    });
+  }, [game.slug, game.upcoming, initialGameAccount?.game_username, walletLoadEnabled]);
+
+  useEffect(() => {
     if (!autoCreate || autoCreateAttempted.current) return;
     autoCreateAttempted.current = true;
 
@@ -134,6 +146,8 @@ export function GameLandingClient({
 
   const rules = GAME_BONUS_RULES;
   const showWalletPanel = Boolean(walletLoadEnabled && !game.upcoming);
+  const hasAccount =
+    accountStatus === "has" || Boolean(initialGameAccount?.game_username);
 
   const walletSection = showWalletPanel ? (
     <div ref={walletPanelRef} className="scroll-mt-24">
@@ -182,8 +196,6 @@ export function GameLandingClient({
           </div>
         </div>
       </section>
-
-      {walletSection}
 
       {/* Recent winners */}
       <section className="rounded-2xl border border-white/10 bg-[#1a1a1a] p-4 sm:p-5">
@@ -297,28 +309,21 @@ export function GameLandingClient({
         <p className="text-sm text-muted-foreground leading-relaxed">{game.bio}</p>
       </section>
 
-      {/* Create Account — only when user has no game login yet */}
+      {/* Create Account — new users only; never Replace at top */}
       <section className="space-y-3">
-        {accountStatus === "none" && (
+        {!hasAccount && accountStatus === "none" && (
           <button
             type="button"
             onClick={handleCreateAccount}
-            disabled={accountStatus === "loading"}
             className={cn(
               "w-full flex items-center justify-center gap-2 rounded-xl py-4 px-6 text-base font-bold transition-opacity shadow-lg",
               game.upcoming
                 ? "text-white/80 bg-[#2a2a2a] border border-white/10 cursor-not-allowed opacity-80"
-                : accountStatus === "loading"
-                  ? "text-white/70 bg-[#2a2a2a] border border-white/10 cursor-wait opacity-80"
-                  : "text-black bg-gradient-to-r from-yellow-400 via-orange-400 to-red-500 hover:opacity-95 shadow-orange-500/20"
+                : "text-black bg-gradient-to-r from-yellow-400 via-orange-400 to-red-500 hover:opacity-95 shadow-orange-500/20"
             )}
           >
             <UserPlus className="h-5 w-5" />
-            {game.upcoming
-              ? "Coming Soon"
-              : accountStatus === "loading"
-                ? "Loading…"
-                : "Create Account"}
+            {game.upcoming ? "Coming Soon" : "Create Account"}
           </button>
         )}
 
@@ -342,6 +347,8 @@ export function GameLandingClient({
           </button>
         </div>
       </section>
+
+      {walletSection}
 
       {!game.upcoming && <GameDepositSection game={game} />}
 
