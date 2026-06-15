@@ -85,7 +85,7 @@ export function TaskProofForm({ taskId, onSuccess, onCancel }: TaskProofFormProp
     }
 
     const result = await submitTaskForReview(taskId, proof.trim(), upload.path);
-    setLoading(false;
+    setLoading(false);
 
     if (result.error) {
       toast.error(result.error);
