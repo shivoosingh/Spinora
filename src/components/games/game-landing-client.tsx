@@ -15,7 +15,6 @@ import {
   UserPlus,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { getMyGameAccount } from "@/lib/actions/game-loads";
 import {
   GAME_BONUS_RULES,
   getOtherGames,
@@ -48,7 +47,6 @@ export function GameLandingClient({ game, autoCreate, walletLoadEnabled }: GameL
   const howItWorksRef = useRef<HTMLDivElement>(null);
   const autoCreateAttempted = useRef(false);
   const walletPanelRef = useRef<HTMLDivElement>(null);
-  const [showWalletPanel, setShowWalletPanel] = useState(false);
   const [accountStatus, setAccountStatus] = useState<"loading" | "none" | "has">("loading");
   const [winner, setWinner] = useState<GameWinner | null>(null);
   const [moreWinners, setMoreWinners] = useState(0);
@@ -62,7 +60,6 @@ export function GameLandingClient({ game, autoCreate, walletLoadEnabled }: GameL
   }, []);
 
   function openWalletPanel() {
-    setShowWalletPanel(true);
     setTimeout(() => {
       walletPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
@@ -86,21 +83,8 @@ export function GameLandingClient({ game, autoCreate, walletLoadEnabled }: GameL
     openWalletPanel();
   }
 
-  useEffect(() => {
-    if (!walletLoadEnabled || game.upcoming) {
-      setAccountStatus("none");
-      return;
-    }
-    void getMyGameAccount(game.slug).then((account) => {
-      const has = Boolean(account?.game_username);
-      setAccountStatus(has ? "has" : "none");
-      if (has) setShowWalletPanel(true);
-    });
-  }, [walletLoadEnabled, game.slug, game.upcoming]);
-
   function handleAccountChange(hasAccount: boolean) {
     setAccountStatus(hasAccount ? "has" : "none");
-    if (hasAccount) setShowWalletPanel(true);
   }
 
   useEffect(() => {
@@ -289,6 +273,15 @@ export function GameLandingClient({ game, autoCreate, walletLoadEnabled }: GameL
         <p className="text-sm text-muted-foreground leading-relaxed">{game.bio}</p>
       </section>
 
+      {!game.upcoming && walletLoadEnabled && (
+        <div ref={walletPanelRef} className="scroll-mt-24">
+          <GameWalletLoadSection
+            game={game}
+            onAccountChange={handleAccountChange}
+          />
+        </div>
+      )}
+
       {/* CTAs — Create Account only when user has no game login yet */}
       <section className="space-y-3">
         {accountStatus !== "has" && (
@@ -334,15 +327,6 @@ export function GameLandingClient({ game, autoCreate, walletLoadEnabled }: GameL
           </button>
         </div>
       </section>
-
-      {!game.upcoming && walletLoadEnabled && (showWalletPanel || accountStatus === "has") && (
-        <div ref={walletPanelRef} className="scroll-mt-24">
-          <GameWalletLoadSection
-            game={game}
-            onAccountChange={handleAccountChange}
-          />
-        </div>
-      )}
 
       {!game.upcoming && <GameDepositSection game={game} />}
 

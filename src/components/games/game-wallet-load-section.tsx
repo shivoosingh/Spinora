@@ -81,6 +81,7 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
   const [depositRollover, setDepositRollover] = useState<DepositRolloverBounds | null>(null);
   const failedToastRef = useRef<string | null>(null);
   const pendingLoadIdsRef = useRef<Set<string>>(new Set());
+  const accountReadyRef = useRef(false);
 
   const refreshWallet = useCallback(async () => {
     if (!supabase) return;
@@ -160,16 +161,21 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
   }, [game.slug, refreshWallet]);
 
   useEffect(() => {
-    onAccountChange?.(Boolean(savedAccount?.game_username));
-  }, [savedAccount, onAccountChange]);
+    let cancelled = false;
 
-  useEffect(() => {
-    void refreshWallet();
-    void refreshAccount();
-    void healStaleGameLoads(game.slug, 5).then((result) => {
-      if (result.healed > 0) void refreshLoads();
-      else void refreshLoads();
-    });
+    async function init() {
+      void refreshWallet();
+      await refreshAccount();
+      await healStaleGameLoads(game.slug, 5);
+      await refreshLoads();
+      if (cancelled) return;
+      accountReadyRef.current = true;
+      const account = await getMyGameAccount(game.slug);
+      if (cancelled) return;
+      onAccountChange?.(Boolean(account?.game_username));
+    }
+
+    void init();
 
     const onVisibilityChange = () => {
       if (document.visibilityState === "visible") {
@@ -179,8 +185,16 @@ export function GameWalletLoadSection({ game, onAccountChange }: GameWalletLoadS
     };
 
     document.addEventListener("visibilitychange", onVisibilityChange);
-    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
-  }, [refreshWallet, refreshAccount, refreshLoads, game.slug]);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [refreshWallet, refreshAccount, refreshLoads, game.slug, onAccountChange]);
+
+  useEffect(() => {
+    if (!accountReadyRef.current) return;
+    onAccountChange?.(Boolean(savedAccount?.game_username));
+  }, [savedAccount, onAccountChange]);
 
   useEffect(() => {
     const onWalletRefresh = () => void refreshWallet();
