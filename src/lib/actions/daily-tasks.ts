@@ -15,6 +15,7 @@ import { notifyAdminOfTaskSubmission } from "@/lib/telegram/notify-admin-task-su
 import { notifyAdminOfTaskRewardClaim } from "@/lib/telegram/notify-admin-task-claim";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { creditUserWallet } from "@/lib/actions/wallet";
+import { isTaskProofStoragePath } from "@/lib/tasks/proof-upload";
 
 export type { TaskSubmission, UserLevelProgress, TaskSubmissionStatus, LevelStatus } from "@/lib/tasks/types";
 
@@ -110,12 +111,12 @@ export async function submitTaskForReview(taskId: string, proofNote: string, pro
   const note = proofNote.trim();
   const url = proofUrl?.trim() || "";
 
-  if (!note && !url) {
-    return { error: "Please describe what you did or upload a screenshot as proof." };
+  if (!url || !isTaskProofStoragePath(url)) {
+    return { error: "Upload a screenshot to submit this task." };
   }
 
-  if (note && note.length < 3 && !url) {
-    return { error: "Please add a bit more detail in your proof note." };
+  if (note && note.length < 3) {
+    return { error: "Please add a bit more detail in your note, or leave it blank." };
   }
 
   await ensureUserLevels(user.id);
@@ -133,7 +134,7 @@ export async function submitTaskForReview(taskId: string, proofNote: string, pro
       .update({
         status: "pending",
         proof_note: note,
-        proof_url: url || null,
+        proof_url: url,
         admin_note: null,
         reviewed_by: null,
         reviewed_at: null,
@@ -147,8 +148,8 @@ export async function submitTaskForReview(taskId: string, proofNote: string, pro
       task_id: taskId,
       level: task.level,
       status: "pending",
-      proof_note: note,
-      proof_url: url || null,
+      proof_note: note || null,
+      proof_url: url,
     });
 
     if (error) {

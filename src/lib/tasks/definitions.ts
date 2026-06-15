@@ -144,7 +144,7 @@ export const TASK_FAQ = [
   },
   {
     q: "What proof should I submit?",
-    a: "Screenshots, links, or a short note describing what you did. For social tasks, include your username visible in the screenshot.",
+    a: "A screenshot is required for every task. For social tasks, make sure your Spinora username is visible in the image. You can add an optional note with extra details.",
   },
   {
     q: "When do I get paid?",
