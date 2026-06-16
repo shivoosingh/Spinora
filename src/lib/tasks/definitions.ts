@@ -50,7 +50,7 @@ export const TASK_LEVELS: TaskLevelMeta[] = [
     name: "Setup & Awareness",
     subtitle: "Get started and connect on Facebook",
     pointsRequired: 50,
-    cashReward: 5,
+    cashReward: 3,
     color: "from-emerald-600 to-emerald-400",
   },
   {
@@ -58,7 +58,7 @@ export const TASK_LEVELS: TaskLevelMeta[] = [
     name: "Engagement Boost",
     subtitle: "Facebook & Instagram activity",
     pointsRequired: 80,
-    cashReward: 8,
+    cashReward: 3,
     color: "from-blue-600 to-blue-400",
   },
   {
@@ -66,7 +66,7 @@ export const TASK_LEVELS: TaskLevelMeta[] = [
     name: "Community Growth",
     subtitle: "Telegram & referrals",
     pointsRequired: 120,
-    cashReward: 12,
+    cashReward: 3,
     color: "from-cyan-600 to-cyan-400",
   },
   {
@@ -74,7 +74,7 @@ export const TASK_LEVELS: TaskLevelMeta[] = [
     name: "Content Interaction",
     subtitle: "TikTok & video platforms",
     pointsRequired: 180,
-    cashReward: 15,
+    cashReward: 3,
     color: "from-violet-600 to-violet-400",
   },
   {
@@ -82,7 +82,7 @@ export const TASK_LEVELS: TaskLevelMeta[] = [
     name: "Premium Member Challenge",
     subtitle: "Recharge $10+ and grow your reach",
     pointsRequired: 250,
-    cashReward: 20,
+    cashReward: 3,
     color: "from-purple-600 to-purple-400",
   },
   {
@@ -90,7 +90,7 @@ export const TASK_LEVELS: TaskLevelMeta[] = [
     name: "Referral & Activity Mission",
     subtitle: "Refer friends and stay active",
     pointsRequired: 350,
-    cashReward: 28,
+    cashReward: 3,
     color: "from-orange-600 to-orange-400",
   },
   {
@@ -98,7 +98,7 @@ export const TASK_LEVELS: TaskLevelMeta[] = [
     name: "VIP Completion Bonus",
     subtitle: "Finish the week and claim your bonus",
     pointsRequired: 500,
-    cashReward: 35,
+    cashReward: 3,
     color: "from-amber-600 to-amber-400",
   },
 ];
