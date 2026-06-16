@@ -828,64 +828,68 @@ export function GameWalletLoadSection({
       </div>
 
       {/* Load / Redeem */}
-      <div className="rounded-xl border border-orange-500/20 bg-black/20 p-4 space-y-3">
-        <div className="flex flex-wrap gap-2">
+      <div className="rounded-xl border border-orange-500/20 bg-black/20 p-4 sm:p-5 space-y-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
           <button
             type="button"
             onClick={() => setFundsTab("load")}
             className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors",
+              "flex items-center justify-center gap-2 rounded-xl py-3.5 sm:py-4 px-4 text-sm sm:text-base font-semibold border transition-colors",
               fundsTab === "load"
-                ? "border-orange-500/50 bg-orange-500/15 text-orange-200"
-                : "border-white/10 text-muted-foreground hover:text-white"
+                ? "border-orange-500/60 bg-gradient-to-r from-orange-500/25 to-red-500/15 text-orange-100 shadow-sm shadow-orange-500/10"
+                : "border-white/10 bg-[#2a2a2a] text-muted-foreground hover:border-white/20 hover:text-white"
             )}
           >
-            <ArrowDownCircle className="h-3.5 w-3.5" />
+            <ArrowDownCircle className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
             Load
           </button>
           <button
             type="button"
             onClick={() => setFundsTab("redeem")}
             className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors",
+              "flex items-center justify-center gap-2 rounded-xl py-3.5 sm:py-4 px-4 text-sm sm:text-base font-semibold border transition-colors",
               fundsTab === "redeem"
-                ? "border-amber-500/50 bg-amber-500/15 text-amber-200"
-                : "border-white/10 text-muted-foreground hover:text-white"
+                ? "border-amber-500/60 bg-gradient-to-r from-amber-500/25 to-orange-500/15 text-amber-100 shadow-sm shadow-amber-500/10"
+                : "border-white/10 bg-[#2a2a2a] text-muted-foreground hover:border-white/20 hover:text-white"
             )}
           >
-            <ArrowUpCircle className="h-3.5 w-3.5" />
+            <ArrowUpCircle className="h-4 w-4 sm:h-5 sm:w-5 shrink-0" />
             Redeem
           </button>
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-3 text-sm">
-          <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
-            <span className="text-muted-foreground">Total Deposit</span>
-            <p className="font-semibold text-white">${walletBalance.toFixed(2)}</p>
+        <div className="grid grid-cols-2 gap-3 sm:gap-4">
+          <div className="rounded-xl border border-white/10 bg-[#242424]/80 px-4 py-3.5 sm:px-5 sm:py-4">
+            <span className="text-xs sm:text-sm text-muted-foreground">Total Deposit</span>
+            <p className="mt-1 text-xl sm:text-2xl font-bold text-white tabular-nums">
+              ${walletBalance.toFixed(2)}
+            </p>
           </div>
-          <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
-            <span className="text-muted-foreground">Bonus wallet</span>
-            <p className="font-semibold text-white">${bonusBalance.toFixed(2)}</p>
+          <div className="rounded-xl border border-white/10 bg-[#242424]/80 px-4 py-3.5 sm:px-5 sm:py-4">
+            <span className="text-xs sm:text-sm text-muted-foreground">Bonus wallet</span>
+            <p className="mt-1 text-xl sm:text-2xl font-bold text-emerald-300 tabular-nums">
+              ${bonusBalance.toFixed(2)}
+            </p>
           </div>
         </div>
 
         {fundsTab === "load" ? (
           <>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <p className="text-xs sm:text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               Load Credits
             </p>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {(["current", "bonus"] as const).map((type) => (
                 <button
                   key={type}
                   type="button"
                   onClick={() => setWalletType(type)}
                   className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+                    "rounded-xl py-3 sm:py-3.5 px-3 text-sm sm:text-base font-semibold border transition-colors",
                     walletType === type
                       ? "border-orange-500/50 bg-orange-500/15 text-orange-200"
-                      : "border-white/10 text-muted-foreground hover:text-white"
+                      : "border-white/10 bg-[#2a2a2a] text-muted-foreground hover:border-white/20 hover:text-white"
                   )}
                 >
                   {type === "current" ? "Total Deposit" : "Bonus wallet"}
@@ -893,9 +897,9 @@ export function GameWalletLoadSection({
               ))}
             </div>
 
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base text-muted-foreground">$</span>
                 <input
                   type="number"
                   min={WALLET_LOAD_LIMITS.min}
@@ -904,48 +908,48 @@ export function GameWalletLoadSection({
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
                   disabled={!savedAccount}
-                  className="w-full rounded-xl border border-white/10 bg-black/30 pl-7 pr-4 py-3 text-sm text-white disabled:opacity-50"
+                  className="w-full rounded-xl border border-white/10 bg-black/30 pl-8 pr-4 py-3.5 sm:py-4 text-base text-white disabled:opacity-50"
                 />
               </div>
               <button
                 type="button"
                 onClick={handleLoad}
                 disabled={loading || pendingLoad || !savedAccount || available < WALLET_LOAD_LIMITS.min}
-                className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-5 py-3 text-sm font-bold text-black disabled:opacity-50"
+                className="flex w-full sm:w-auto sm:min-w-[132px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 px-6 py-3.5 sm:py-4 text-base font-bold text-black disabled:opacity-50 shrink-0"
               >
                 {loading || pendingLoad ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-5 w-5 animate-spin" />
                 ) : (
-                  <Wallet className="h-4 w-4" />
+                  <Wallet className="h-5 w-5" />
                 )}
                 Load
               </button>
             </div>
 
             {!savedAccount && (
-              <p className="text-xs text-amber-400/90">Create your account first, then load credits.</p>
+              <p className="text-sm text-amber-400/90">Create your account first, then load credits.</p>
             )}
           </>
         ) : (
           <>
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            <p className="text-xs sm:text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               Redeem Credits
             </p>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-sm text-muted-foreground">
               Pull credits from your {game.name} account back to your Spinora wallet.
             </p>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
               {(["current", "bonus"] as const).map((type) => (
                 <button
                   key={type}
                   type="button"
                   onClick={() => setRedeemWalletType(type)}
                   className={cn(
-                    "px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors",
+                    "rounded-xl py-3 sm:py-3.5 px-3 text-sm sm:text-base font-semibold border transition-colors",
                     redeemWalletType === type
                       ? "border-amber-500/50 bg-amber-500/15 text-amber-200"
-                      : "border-white/10 text-muted-foreground hover:text-white"
+                      : "border-white/10 bg-[#2a2a2a] text-muted-foreground hover:border-white/20 hover:text-white"
                   )}
                 >
                   {type === "current" ? "To Deposit Redeem" : "To Bonus Redeem"}
@@ -984,21 +988,21 @@ export function GameWalletLoadSection({
               </div>
             )}
 
-            <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
+            <label className="flex items-center gap-2.5 text-sm sm:text-base text-white cursor-pointer py-1">
               <input
                 type="checkbox"
                 checked={redeemAll}
                 onChange={(e) => setRedeemAll(e.target.checked)}
                 disabled={!savedAccount}
-                className="rounded border-white/20"
+                className="h-4 w-4 rounded border-white/20"
               />
               Redeem all (zero out game account)
             </label>
 
             {!redeemAll && (
-              <div className="flex gap-3">
+              <div className="flex flex-col sm:flex-row gap-3">
                 <div className="relative flex-1">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base text-muted-foreground">$</span>
                   <input
                     type="number"
                     min={WALLET_LOAD_LIMITS.min}
@@ -1007,7 +1011,7 @@ export function GameWalletLoadSection({
                     value={redeemAmount}
                     onChange={(e) => setRedeemAmount(e.target.value)}
                     disabled={!savedAccount}
-                    className="w-full rounded-xl border border-white/10 bg-black/30 pl-7 pr-4 py-3 text-sm text-white disabled:opacity-50"
+                    className="w-full rounded-xl border border-white/10 bg-black/30 pl-8 pr-4 py-3.5 sm:py-4 text-base text-white disabled:opacity-50"
                   />
                 </div>
                 <button
@@ -1020,12 +1024,12 @@ export function GameWalletLoadSection({
                     depositRedeemBlocked ||
                     (depositRedeemRulesActive && depositRollover!.maxRedeemRemaining <= 0)
                   }
-                  className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-5 py-3 text-sm font-bold text-black disabled:opacity-50"
+                  className="flex w-full sm:w-auto sm:min-w-[132px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-6 py-3.5 sm:py-4 text-base font-bold text-black disabled:opacity-50 shrink-0"
                 >
                   {redeeming || pendingRedeem ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    <ArrowUpCircle className="h-4 w-4" />
+                    <ArrowUpCircle className="h-5 w-5" />
                   )}
                   Redeem
                 </button>
@@ -1043,19 +1047,19 @@ export function GameWalletLoadSection({
                   depositRedeemBlocked ||
                   (depositRedeemRulesActive && depositRollover!.maxRedeemRemaining <= 0)
                 }
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-5 py-3 text-sm font-bold text-black disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-6 py-3.5 sm:py-4 text-base font-bold text-black disabled:opacity-50"
               >
                 {redeeming || pendingRedeem ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-5 w-5 animate-spin" />
                 ) : (
-                  <ArrowUpCircle className="h-4 w-4" />
+                  <ArrowUpCircle className="h-5 w-5" />
                 )}
                 Redeem All
               </button>
             )}
 
             {!savedAccount && (
-              <p className="text-xs text-amber-400/90">Create your account first, then redeem credits.</p>
+              <p className="text-sm text-amber-400/90">Create your account first, then redeem credits.</p>
             )}
           </>
         )}
