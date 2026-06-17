@@ -23,8 +23,15 @@ export const GAME_BONUS_RULES = {
   regularBonus: 10,
   minDeposit: 5,
   maxDeposit: 500,
+  /** Deposit wallet load → deposit redeem wallet */
   redeemMin: 3,
   redeemMax: 8,
+} as const;
+
+/** Bonus wallet load → bonus redeem wallet */
+export const GAME_BONUS_REDEEM_RULES = {
+  redeemMin: 7,
+  redeemMax: 15,
 } as const;
 
 export const UPCOMING_GAME_MESSAGE =

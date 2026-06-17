@@ -24,11 +24,12 @@ import {
   getMyGameLoads,
   getMyGameAccount,
   getDepositRolloverForGame,
+  getBonusRolloverForGame,
   healStaleGameLoads,
   cancelMyGameLoad,
 } from "@/lib/actions/game-loads";
 import type { Game } from "@/lib/games";
-import { GAME_BONUS_RULES } from "@/lib/games";
+import { GAME_BONUS_RULES, GAME_BONUS_REDEEM_RULES } from "@/lib/games";
 import type { GameLoadRequest } from "@/lib/game-automation/types";
 import { isAutomatedGameSlug, AUTOMATED_BOT_WORKER_DIR } from "@/lib/game-automation/types";
 import { isGameAccountCreateLoadType } from "@/lib/game-automation/account-create";
@@ -98,6 +99,7 @@ export function GameWalletLoadSection({
   const [showPassword, setShowPassword] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [depositRollover, setDepositRollover] = useState<DepositRolloverBounds | null>(null);
+  const [bonusRollover, setBonusRollover] = useState<DepositRolloverBounds | null>(null);
   const failedToastRef = useRef<string | null>(null);
   const pendingJobIdsRef = useRef<Set<string>>(new Set());
   const failedToastShownRef = useRef<Set<string>>(new Set());
@@ -299,6 +301,7 @@ export function GameWalletLoadSection({
 
   useEffect(() => {
     void getDepositRolloverForGame(game.slug).then((stats) => setDepositRollover(stats));
+    void getBonusRolloverForGame(game.slug).then((stats) => setBonusRollover(stats));
   }, [game.slug, recentLoads]);
 
   const available = walletType === "current" ? walletBalance : bonusBalance;
@@ -323,19 +326,32 @@ export function GameWalletLoadSection({
   const lastKnownBalance = lastBalanceCheck ? Number(lastBalanceCheck.amount) : null;
   const parsedRedeemAmount = parseFloat(redeemAmount) || 0;
 
-  const depositRedeemRulesActive =
-    redeemWalletType === "current" &&
-    depositRollover !== null &&
-    depositRollover.activeDepositAmount > 0;
+  const activeRedeemRollover =
+    redeemWalletType === "current" ? depositRollover : bonusRollover;
 
-  const redeemMaxAllowed = depositRedeemRulesActive
-    ? Math.min(WALLET_LOAD_LIMITS.max, depositRollover.maxRedeemRemaining)
+  const redeemMinMult =
+    redeemWalletType === "current"
+      ? GAME_BONUS_RULES.redeemMin
+      : GAME_BONUS_REDEEM_RULES.redeemMin;
+
+  const redeemMaxMult =
+    redeemWalletType === "current"
+      ? GAME_BONUS_RULES.redeemMax
+      : GAME_BONUS_REDEEM_RULES.redeemMax;
+
+  const loadLabel = redeemWalletType === "current" ? "deposit" : "bonus load";
+
+  const redeemRulesActive =
+    activeRedeemRollover !== null && activeRedeemRollover.activeDepositAmount > 0;
+
+  const redeemMaxAllowed = redeemRulesActive
+    ? Math.min(WALLET_LOAD_LIMITS.max, activeRedeemRollover!.maxRedeemRemaining)
     : WALLET_LOAD_LIMITS.max;
 
-  const depositRedeemBlocked =
-    depositRedeemRulesActive &&
+  const redeemBlocked =
+    redeemRulesActive &&
     lastKnownBalance !== null &&
-    lastKnownBalance < depositRollover.minGameBalance;
+    lastKnownBalance < activeRedeemRollover!.minGameBalance;
 
   async function copyText(text: string, label: string) {
     await navigator.clipboard.writeText(text);
@@ -501,27 +517,27 @@ export function GameWalletLoadSection({
       return;
     }
 
-    if (depositRedeemRulesActive && depositRollover) {
-      if (depositRollover.maxRedeemRemaining <= 0) {
-        toast.error("You have reached the 8x redeem limit for your deposit loads.");
+    if (redeemRulesActive && activeRedeemRollover) {
+      if (activeRedeemRollover.maxRedeemRemaining <= 0) {
+        toast.error(`You have reached the ${redeemMaxMult}x redeem limit for your ${loadLabel}.`);
         return;
       }
       if (lastKnownBalance === null && !pendingCheck) {
         toast.error(
-          `Check your live game balance first — you need at least $${depositRollover.minGameBalance.toFixed(2)} in game (${GAME_BONUS_RULES.redeemMin}x your $${depositRollover.activeDepositAmount.toFixed(2)} deposit) to redeem.`
+          `Check your live game balance first — you need at least $${activeRedeemRollover.minGameBalance.toFixed(2)} in game (${redeemMinMult}x your $${activeRedeemRollover.activeDepositAmount.toFixed(2)} ${loadLabel}) to redeem.`
         );
         return;
       }
-      if (depositRedeemBlocked) {
+      if (redeemBlocked) {
         toast.error(
-          `Need at least $${depositRollover.minGameBalance.toFixed(2)} in game (${GAME_BONUS_RULES.redeemMin}x your $${depositRollover.activeDepositAmount.toFixed(2)} deposit). Last checked: $${lastKnownBalance!.toFixed(2)}.`
+          `Need at least $${activeRedeemRollover.minGameBalance.toFixed(2)} in game (${redeemMinMult}x your $${activeRedeemRollover.activeDepositAmount.toFixed(2)} ${loadLabel}). Last checked: $${lastKnownBalance!.toFixed(2)}.`
         );
         return;
       }
     }
 
     if (!redeemAll) {
-      const maxPartial = depositRedeemRulesActive ? redeemMaxAllowed : WALLET_LOAD_LIMITS.max;
+      const maxPartial = redeemRulesActive ? redeemMaxAllowed : WALLET_LOAD_LIMITS.max;
       if (parsedRedeemAmount < WALLET_LOAD_LIMITS.min || parsedRedeemAmount > maxPartial) {
         toast.error(`Enter $${WALLET_LOAD_LIMITS.min}–$${maxPartial.toFixed(2)}`);
         return;
@@ -957,15 +973,19 @@ export function GameWalletLoadSection({
               ))}
             </div>
 
-            {depositRedeemRulesActive && depositRollover && (
+            {redeemRulesActive && activeRedeemRollover && (
               <div className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90 space-y-1">
-                <p className="font-semibold text-amber-200">Deposit redeem rollover (this deposit)</p>
+                <p className="font-semibold text-amber-200">
+                  {redeemWalletType === "current"
+                    ? "Deposit redeem rollover (this deposit load)"
+                    : "Bonus redeem rollover (this bonus load)"}
+                </p>
                 <p>
-                  Last deposit load ${depositRollover.activeDepositAmount.toFixed(2)} → need{" "}
-                  <span className="font-semibold">${depositRollover.minGameBalance.toFixed(2)}</span>{" "}
-                  in game to redeem ({GAME_BONUS_RULES.redeemMin}x min), up to{" "}
-                  <span className="font-semibold">${depositRollover.maxRedeemRemaining.toFixed(2)}</span>{" "}
-                  remaining ({GAME_BONUS_RULES.redeemMax}x max for this deposit).
+                  Last {loadLabel} ${activeRedeemRollover.activeDepositAmount.toFixed(2)} → need{" "}
+                  <span className="font-semibold">${activeRedeemRollover.minGameBalance.toFixed(2)}</span>{" "}
+                  in game to redeem ({redeemMinMult}x min), up to{" "}
+                  <span className="font-semibold">${activeRedeemRollover.maxRedeemRemaining.toFixed(2)}</span>{" "}
+                  remaining ({redeemMaxMult}x max for this {loadLabel}).
                 </p>
                 {lastKnownBalance !== null ? (
                   <p>
@@ -973,12 +993,12 @@ export function GameWalletLoadSection({
                     <span
                       className={cn(
                         "font-semibold",
-                        depositRedeemBlocked ? "text-red-300" : "text-emerald-300"
+                        redeemBlocked ? "text-red-300" : "text-emerald-300"
                       )}
                     >
                       ${lastKnownBalance.toFixed(2)}
                     </span>
-                    {depositRedeemBlocked ? " — play more before redeeming." : " — eligible to redeem."}
+                    {redeemBlocked ? " — play more before redeeming." : " — eligible to redeem."}
                   </p>
                 ) : (
                   <p className="text-amber-200/80">

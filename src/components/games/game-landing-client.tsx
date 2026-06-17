@@ -18,6 +18,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getMyGameAccount } from "@/lib/actions/game-loads";
 import {
   GAME_BONUS_RULES,
+  GAME_BONUS_REDEEM_RULES,
   getOtherGames,
   UPCOMING_GAME_MESSAGE,
   type Game,
@@ -360,7 +361,10 @@ export function GameLandingClient({
             Load: ${rules.minDeposit} – ${rules.maxDeposit}
           </span>
           <span className="inline-flex items-center rounded-full border border-violet-500/30 bg-violet-500/10 px-3 py-1.5 text-xs font-medium text-violet-200">
-            Redeem: {rules.redeemMin}x – {rules.redeemMax}x
+            Deposit redeem: {rules.redeemMin}x – {rules.redeemMax}x
+          </span>
+          <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-200">
+            Bonus redeem: {GAME_BONUS_REDEEM_RULES.redeemMin}x – {GAME_BONUS_REDEEM_RULES.redeemMax}x
           </span>
         </div>
       </section>
@@ -469,7 +473,7 @@ export function GameLandingClient({
               <li className="flex gap-3">
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-500/20 text-orange-400 text-xs font-bold">4</span>
                 <span>
-                  Load ${rules.minDeposit}–${rules.maxDeposit}, play, and redeem at {rules.redeemMin}x–{rules.redeemMax}x rollover.
+                  Deposit load: redeem at {rules.redeemMin}x–{rules.redeemMax}x. Bonus load: redeem at {GAME_BONUS_REDEEM_RULES.redeemMin}x–{GAME_BONUS_REDEEM_RULES.redeemMax}x.
                 </span>
               </li>
             </ol>

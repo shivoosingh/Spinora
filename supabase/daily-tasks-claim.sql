@@ -69,8 +69,8 @@ BEGIN
   END IF;
 
   v_reward := CASE p_level
-    WHEN 1 THEN 5 WHEN 2 THEN 8 WHEN 3 THEN 12 WHEN 4 THEN 15 WHEN 5 THEN 20
-    WHEN 6 THEN 28 WHEN 7 THEN 35 WHEN 8 THEN 42 WHEN 9 THEN 48 WHEN 10 THEN 50
+    WHEN 1 THEN 3 WHEN 2 THEN 3 WHEN 3 THEN 3 WHEN 4 THEN 3 WHEN 5 THEN 3
+    WHEN 6 THEN 3 WHEN 7 THEN 3
     ELSE NULL
   END;
 
@@ -95,7 +95,7 @@ BEGIN
   SET reward_granted = true, reward_claimed_at = NOW()
   WHERE user_id = p_user_id AND level = p_level;
 
-  IF p_level < 10 THEN
+  IF p_level < 7 THEN
     UPDATE public.user_task_levels
     SET status = 'locked'
     WHERE user_id = p_user_id

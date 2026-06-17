@@ -13,6 +13,11 @@ import {
   DEPOSIT_LOAD_TYPES,
   type DepositRolloverBounds,
 } from "@/lib/wallet/deposit-redeem-rollover";
+import {
+  bonusRolloverBounds,
+  BONUS_LOAD_TYPES,
+  type BonusRolloverBounds,
+} from "@/lib/wallet/bonus-redeem-rollover";
 
 export async function requestGameAccountCreate(input: {
   gameSlug: string;
@@ -310,6 +315,38 @@ export async function requestGameRedeem(input: {
         }
       }
     }
+  } else if (walletType === "bonus") {
+    const rollover = await fetchActiveBonusRolloverForUser(supabase, user.id, input.gameSlug);
+    const bounds = bonusRolloverBounds(rollover);
+
+    if (bounds.activeDepositAmount > 0) {
+      const lastBalance = await fetchLastGameBalanceForUser(supabase, user.id, input.gameSlug);
+
+      if (lastBalance === null) {
+        return {
+          error: `Check your live game balance first — you need at least $${bounds.minGameBalance.toFixed(2)} in game (7x your $${bounds.activeDepositAmount.toFixed(2)} bonus load) to redeem.`,
+        };
+      }
+
+      if (lastBalance < bounds.minGameBalance) {
+        return {
+          error: `Need at least $${bounds.minGameBalance.toFixed(2)} in game (7x your $${bounds.activeDepositAmount.toFixed(2)} bonus load). Last checked: $${lastBalance.toFixed(2)}.`,
+        };
+      }
+
+      if (bounds.maxRedeemRemaining <= 0) {
+        return { error: "You have reached the 15x redeem limit for this bonus load." };
+      }
+
+      if (!redeemAll) {
+        const amount = Math.round((input.amount ?? 0) * 100) / 100;
+        if (amount > bounds.maxRedeemRemaining) {
+          return {
+            error: `Maximum redeem is $${bounds.maxRedeemRemaining.toFixed(2)} (15x this bonus load minus prior redeems).`,
+          };
+        }
+      }
+    }
   }
 
   const { data: pending } = await supabase
@@ -336,7 +373,7 @@ export async function requestGameRedeem(input: {
   if (error) {
     if (error.message.includes("request_game_redeem")) {
       return {
-        error: "Run supabase/deposit-redeem-rollover.sql in Supabase SQL Editor first.",
+        error: "Run supabase/deposit-redeem-rollover.sql and supabase/bonus-redeem-rollover.sql in Supabase SQL Editor first.",
       };
     }
     return { error: error.message };
@@ -387,13 +424,64 @@ async function fetchActiveDepositRolloverForUser(
     };
   }
 
+  return fetchActiveWalletRolloverFallback(
+    supabase,
+    userId,
+    gameSlug,
+    "current",
+    DEPOSIT_LOAD_TYPES
+  );
+}
+
+async function fetchActiveBonusRolloverForUser(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  gameSlug: string
+) {
+  const { data, error } = await supabase.rpc("get_bonus_rollover_totals", {
+    p_user_id: userId,
+    p_game_slug: gameSlug,
+  });
+
+  if (!error && data?.length) {
+    const row = data[0] as {
+      active_load_amount?: number;
+      redeemed_since_active?: number;
+    };
+    return {
+      activeBonusLoadAmount: Number(row.active_load_amount ?? 0),
+      redeemedSinceActiveBonusLoad: Number(row.redeemed_since_active ?? 0),
+    };
+  }
+
+  const fallback = await fetchActiveWalletRolloverFallback(
+    supabase,
+    userId,
+    gameSlug,
+    "bonus",
+    BONUS_LOAD_TYPES
+  );
+
+  return {
+    activeBonusLoadAmount: fallback.activeDepositAmount,
+    redeemedSinceActiveBonusLoad: fallback.redeemedSinceActiveDeposit,
+  };
+}
+
+async function fetchActiveWalletRolloverFallback(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  gameSlug: string,
+  walletType: "current" | "bonus",
+  loadTypes: readonly string[]
+) {
   const { data: latestLoad } = await supabase
     .from("game_load_requests")
     .select("amount, completed_at")
     .eq("user_id", userId)
     .eq("game_slug", gameSlug)
-    .eq("wallet_type", "current")
-    .in("load_type", [...DEPOSIT_LOAD_TYPES])
+    .eq("wallet_type", walletType)
+    .in("load_type", [...loadTypes])
     .eq("status", "completed")
     .order("completed_at", { ascending: false })
     .limit(1)
@@ -408,7 +496,7 @@ async function fetchActiveDepositRolloverForUser(
     .select("amount")
     .eq("user_id", userId)
     .eq("game_slug", gameSlug)
-    .eq("wallet_type", "current")
+    .eq("wallet_type", walletType)
     .eq("load_type", "redeem")
     .eq("status", "completed");
 
@@ -458,6 +546,19 @@ export async function getDepositRolloverForGame(
 
   const rollover = await fetchActiveDepositRolloverForUser(supabase, user.id, gameSlug);
   return depositRolloverBounds(rollover);
+}
+
+export async function getBonusRolloverForGame(
+  gameSlug: string
+): Promise<BonusRolloverBounds | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const rollover = await fetchActiveBonusRolloverForUser(supabase, user.id, gameSlug);
+  return bonusRolloverBounds(rollover);
 }
 
 export async function getMyGameLoads(gameSlug?: string) {

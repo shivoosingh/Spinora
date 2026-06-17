@@ -2,8 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 const DEPOSIT_REDEEM_MIN_MULT = 3;
 const DEPOSIT_REDEEM_MAX_MULT = 8;
+const BONUS_REDEEM_MIN_MULT = 7;
+const BONUS_REDEEM_MAX_MULT = 15;
 const MIN_PARTIAL_REDEEM = 5;
-const DEPOSIT_LOAD_TYPES = ["load", "reload"] as const;
+const LOAD_TYPES = ["load", "reload"] as const;
 
 export interface ActiveDepositRollover {
   activeDepositAmount: number;
@@ -14,35 +16,55 @@ function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
-function depositRolloverBounds(rollover: ActiveDepositRollover) {
+function rolloverBounds(
+  rollover: ActiveDepositRollover,
+  minMult: number,
+  maxMult: number
+) {
   const activeDepositAmount = roundMoney(rollover.activeDepositAmount);
   const redeemedSinceActiveDeposit = roundMoney(rollover.redeemedSinceActiveDeposit);
   return {
     activeDepositAmount,
     redeemedSinceActiveDeposit,
-    minGameBalance: roundMoney(activeDepositAmount * DEPOSIT_REDEEM_MIN_MULT),
+    minGameBalance: roundMoney(activeDepositAmount * minMult),
     maxRedeemRemaining: roundMoney(
-      Math.max(
-        0,
-        activeDepositAmount * DEPOSIT_REDEEM_MAX_MULT - redeemedSinceActiveDeposit
-      )
+      Math.max(0, activeDepositAmount * maxMult - redeemedSinceActiveDeposit)
     ),
   };
 }
 
-/** Latest single deposit load + redeems since that load (not summed across all loads). */
-export async function fetchActiveDepositRollover(
+async function fetchActiveWalletRollover(
   supabase: SupabaseClient,
   userId: string,
-  gameSlug: string
+  gameSlug: string,
+  walletType: "current" | "bonus"
 ): Promise<ActiveDepositRollover> {
+  const rpcName =
+    walletType === "current" ? "get_deposit_rollover_totals" : "get_bonus_rollover_totals";
+
+  const { data, error } = await supabase.rpc(rpcName, {
+    p_user_id: userId,
+    p_game_slug: gameSlug,
+  });
+
+  if (!error && data?.length) {
+    const row = data[0] as {
+      active_load_amount?: number;
+      redeemed_since_active?: number;
+    };
+    return {
+      activeDepositAmount: roundMoney(Number(row.active_load_amount ?? 0)),
+      redeemedSinceActiveDeposit: roundMoney(Number(row.redeemed_since_active ?? 0)),
+    };
+  }
+
   const { data: latestLoad } = await supabase
     .from("game_load_requests")
     .select("amount, completed_at")
     .eq("user_id", userId)
     .eq("game_slug", gameSlug)
-    .eq("wallet_type", "current")
-    .in("load_type", [...DEPOSIT_LOAD_TYPES])
+    .eq("wallet_type", walletType)
+    .in("load_type", [...LOAD_TYPES])
     .eq("status", "completed")
     .order("completed_at", { ascending: false })
     .limit(1)
@@ -52,18 +74,17 @@ export async function fetchActiveDepositRollover(
     return { activeDepositAmount: 0, redeemedSinceActiveDeposit: 0 };
   }
 
-  const activeAt = latestLoad.completed_at;
   let redeemQuery = supabase
     .from("game_load_requests")
     .select("amount")
     .eq("user_id", userId)
     .eq("game_slug", gameSlug)
-    .eq("wallet_type", "current")
+    .eq("wallet_type", walletType)
     .eq("load_type", "redeem")
     .eq("status", "completed");
 
-  if (activeAt) {
-    redeemQuery = redeemQuery.gte("completed_at", activeAt);
+  if (latestLoad.completed_at) {
+    redeemQuery = redeemQuery.gte("completed_at", latestLoad.completed_at);
   }
 
   const { data: redeems } = await redeemQuery;
@@ -78,6 +99,15 @@ export async function fetchActiveDepositRollover(
   };
 }
 
+/** Latest single deposit load + redeems since that load (not summed across all loads). */
+export async function fetchActiveDepositRollover(
+  supabase: SupabaseClient,
+  userId: string,
+  gameSlug: string
+): Promise<ActiveDepositRollover> {
+  return fetchActiveWalletRollover(supabase, userId, gameSlug, "current");
+}
+
 /** @deprecated Use fetchActiveDepositRollover */
 export async function fetchDepositRolloverTotals(
   supabase: SupabaseClient,
@@ -87,15 +117,18 @@ export async function fetchDepositRolloverTotals(
   return fetchActiveDepositRollover(supabase, userId, gameSlug);
 }
 
-function resolveDepositRedeemAmount(input: {
+function resolveWalletRedeemAmount(input: {
   gameBalance: number;
   requestedAmount: number;
   redeemAll: boolean;
   rollover: ActiveDepositRollover;
+  minMult: number;
+  maxMult: number;
+  loadLabel: string;
 }): { amount: number } | { error: string } {
   const balance = roundMoney(input.gameBalance);
   const requested = roundMoney(input.requestedAmount);
-  const bounds = depositRolloverBounds(input.rollover);
+  const bounds = rolloverBounds(input.rollover, input.minMult, input.maxMult);
 
   if (bounds.activeDepositAmount <= 0) {
     if (input.redeemAll) {
@@ -114,13 +147,13 @@ function resolveDepositRedeemAmount(input: {
 
   if (balance < bounds.minGameBalance) {
     return {
-      error: `Need at least $${bounds.minGameBalance.toFixed(2)} in game (${DEPOSIT_REDEEM_MIN_MULT}x your $${bounds.activeDepositAmount.toFixed(2)} deposit). Current balance: $${balance.toFixed(2)}.`,
+      error: `Need at least $${bounds.minGameBalance.toFixed(2)} in game (${input.minMult}x your $${bounds.activeDepositAmount.toFixed(2)} ${input.loadLabel}). Current balance: $${balance.toFixed(2)}.`,
     };
   }
 
   if (bounds.maxRedeemRemaining <= 0) {
     return {
-      error: `You have reached the ${DEPOSIT_REDEEM_MAX_MULT}x redeem limit for this deposit.`,
+      error: `You have reached the ${input.maxMult}x redeem limit for this ${input.loadLabel}.`,
     };
   }
 
@@ -131,7 +164,7 @@ function resolveDepositRedeemAmount(input: {
     amount = requested;
     if (amount > bounds.maxRedeemRemaining) {
       return {
-        error: `Maximum redeem is $${bounds.maxRedeemRemaining.toFixed(2)} (${DEPOSIT_REDEEM_MAX_MULT}x this deposit minus prior redeems).`,
+        error: `Maximum redeem is $${bounds.maxRedeemRemaining.toFixed(2)} (${input.maxMult}x this ${input.loadLabel} minus prior redeems).`,
       };
     }
     if (amount > balance) {
@@ -154,12 +187,27 @@ type RedeemJob = {
   redeem_all?: boolean;
 };
 
-/** Bonus redeems pass through; deposit redeems enforce 3x min balance and 8x max cap per deposit. */
+/** Enforces rollover: deposit 3x/8x, bonus load 7x/15x per individual load. */
 export async function resolveDepositRedeemForJob(
   supabase: SupabaseClient,
   job: RedeemJob,
   gameBalance: number
 ): Promise<number> {
+  if (job.wallet_type === "bonus") {
+    const rollover = await fetchActiveWalletRollover(supabase, job.user_id, job.game_slug, "bonus");
+    const resolved = resolveWalletRedeemAmount({
+      gameBalance,
+      requestedAmount: Number(job.amount),
+      redeemAll: Boolean(job.redeem_all),
+      rollover,
+      minMult: BONUS_REDEEM_MIN_MULT,
+      maxMult: BONUS_REDEEM_MAX_MULT,
+      loadLabel: "bonus load",
+    });
+    if ("error" in resolved) throw new Error(resolved.error);
+    return resolved.amount;
+  }
+
   if (job.wallet_type !== "current") {
     const balance = roundMoney(gameBalance);
     if (job.redeem_all) {
@@ -175,11 +223,14 @@ export async function resolveDepositRedeemForJob(
   }
 
   const rollover = await fetchActiveDepositRollover(supabase, job.user_id, job.game_slug);
-  const resolved = resolveDepositRedeemAmount({
+  const resolved = resolveWalletRedeemAmount({
     gameBalance,
     requestedAmount: Number(job.amount),
     redeemAll: Boolean(job.redeem_all),
     rollover,
+    minMult: DEPOSIT_REDEEM_MIN_MULT,
+    maxMult: DEPOSIT_REDEEM_MAX_MULT,
+    loadLabel: "deposit",
   });
 
   if ("error" in resolved) throw new Error(resolved.error);

@@ -1,5 +1,5 @@
--- Require every level task to be admin-approved before claiming reward.
--- Run in Supabase SQL Editor after daily-tasks-claim.sql
+-- Fix daily task claim amounts: website shows $3/day but Supabase still paid old Level 1–10 rewards.
+-- Run in Supabase SQL Editor (replaces claim_task_reward with $3 for Day 1–7).
 
 CREATE OR REPLACE FUNCTION public.claim_task_reward(
   p_user_id UUID,
@@ -21,6 +21,7 @@ BEGIN
     RAISE EXCEPTION 'Unauthorized';
   END IF;
 
+  -- $3 per day (Days 1–7). Levels 8–10 are retired.
   v_reward := CASE p_level
     WHEN 1 THEN 3 WHEN 2 THEN 3 WHEN 3 THEN 3 WHEN 4 THEN 3 WHEN 5 THEN 3
     WHEN 6 THEN 3 WHEN 7 THEN 3
