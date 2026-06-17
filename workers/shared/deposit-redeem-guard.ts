@@ -131,18 +131,9 @@ function resolveWalletRedeemAmount(input: {
   const bounds = rolloverBounds(input.rollover, input.minMult, input.maxMult);
 
   if (bounds.activeDepositAmount <= 0) {
-    if (input.redeemAll) {
-      if (balance <= 0) return { error: "No balance to redeem" };
-      return { amount: balance };
-    }
-    if (requested <= 0) return { error: "Amount must be positive" };
-    if (requested < MIN_PARTIAL_REDEEM) {
-      return { error: `Minimum redeem amount is $${MIN_PARTIAL_REDEEM}` };
-    }
-    if (requested > balance) {
-      return { error: `Insufficient game balance ($${balance.toFixed(2)})` };
-    }
-    return { amount: requested };
+    return {
+      error: `No ${input.loadLabel} on this game account — redeem destination must match how you loaded.`,
+    };
   }
 
   if (balance < bounds.minGameBalance) {

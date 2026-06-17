@@ -283,9 +283,29 @@ export async function requestGameRedeem(input: {
 
   const walletType = input.walletType ?? "current";
 
+  const depositRollover = await fetchActiveDepositRolloverForUser(
+    supabase,
+    user.id,
+    input.gameSlug
+  );
+  const bonusRollover = await fetchActiveBonusRolloverForUser(
+    supabase,
+    user.id,
+    input.gameSlug
+  );
+  const hasDepositLoad = depositRollover.activeDepositAmount > 0;
+  const hasBonusLoad = bonusRollover.activeBonusLoadAmount > 0;
+
   if (walletType === "current") {
-    const rollover = await fetchActiveDepositRolloverForUser(supabase, user.id, input.gameSlug);
-    const bounds = depositRolloverBounds(rollover);
+    if (!hasDepositLoad) {
+      return {
+        error: hasBonusLoad
+          ? "You loaded from your bonus wallet — redeem to Bonus Redeem only (7x–15x rules)."
+          : "Load credits from Total Deposit into this game before redeeming to Deposit Redeem.",
+      };
+    }
+
+    const bounds = depositRolloverBounds(depositRollover);
 
     if (bounds.activeDepositAmount > 0) {
       const lastBalance = await fetchLastGameBalanceForUser(supabase, user.id, input.gameSlug);
@@ -316,8 +336,15 @@ export async function requestGameRedeem(input: {
       }
     }
   } else if (walletType === "bonus") {
-    const rollover = await fetchActiveBonusRolloverForUser(supabase, user.id, input.gameSlug);
-    const bounds = bonusRolloverBounds(rollover);
+    if (!hasBonusLoad) {
+      return {
+        error: hasDepositLoad
+          ? "You loaded from Total Deposit — redeem to Deposit Redeem only (3x–8x rules)."
+          : "Load credits from your bonus wallet into this game before redeeming to Bonus Redeem.",
+      };
+    }
+
+    const bounds = bonusRolloverBounds(bonusRollover);
 
     if (bounds.activeDepositAmount > 0) {
       const lastBalance = await fetchLastGameBalanceForUser(supabase, user.id, input.gameSlug);

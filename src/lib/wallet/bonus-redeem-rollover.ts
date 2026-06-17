@@ -46,18 +46,11 @@ export function resolveBonusRedeemAmount(input: {
   const bounds = bonusRolloverBounds(input.rollover);
 
   if (bounds.activeDepositAmount <= 0) {
-    if (input.redeemAll) {
-      if (balance <= 0) return { ok: false, error: "No balance to redeem" };
-      return { ok: true, amount: balance };
-    }
-    if (requested <= 0) return { ok: false, error: "Amount must be positive" };
-    if (requested < WALLET_LOAD_LIMITS.min) {
-      return { ok: false, error: `Minimum redeem amount is $${WALLET_LOAD_LIMITS.min}` };
-    }
-    if (requested > balance) {
-      return { ok: false, error: `Insufficient game balance ($${balance.toFixed(2)})` };
-    }
-    return { ok: true, amount: requested };
+    return {
+      ok: false,
+      error:
+        "No bonus load on this game account. Redeem to Deposit Redeem if you loaded from Total Deposit.",
+    };
   }
 
   if (balance < bounds.minGameBalance) {
