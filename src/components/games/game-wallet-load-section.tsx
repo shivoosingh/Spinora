@@ -1041,8 +1041,8 @@ export function GameWalletLoadSection({
                     redeeming ||
                     pendingRedeem ||
                     !savedAccount ||
-                    depositRedeemBlocked ||
-                    (depositRedeemRulesActive && depositRollover!.maxRedeemRemaining <= 0)
+                    redeemBlocked ||
+                    (redeemRulesActive && activeRedeemRollover!.maxRedeemRemaining <= 0)
                   }
                   className="flex w-full sm:w-auto sm:min-w-[132px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-6 py-3.5 sm:py-4 text-base font-bold text-black disabled:opacity-50 shrink-0"
                 >
@@ -1064,8 +1064,8 @@ export function GameWalletLoadSection({
                   redeeming ||
                   pendingRedeem ||
                   !savedAccount ||
-                  depositRedeemBlocked ||
-                  (depositRedeemRulesActive && depositRollover!.maxRedeemRemaining <= 0)
+                  redeemBlocked ||
+                  (redeemRulesActive && activeRedeemRollover!.maxRedeemRemaining <= 0)
                 }
                 className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 px-6 py-3.5 sm:py-4 text-base font-bold text-black disabled:opacity-50"
               >
