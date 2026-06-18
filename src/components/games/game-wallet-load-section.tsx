@@ -34,17 +34,10 @@ import { isAutomatedGameSlug, AUTOMATED_BOT_WORKER_DIR } from "@/lib/game-automa
 import { isGameAccountCreateLoadType } from "@/lib/game-automation/account-create";
 import { WALLET_LOAD_LIMITS } from "@/lib/game-automation/config";
 import {
-  ensureGameAccountUsername,
-  GAME_ACCOUNT_PASSWORD_MIN,
-  GAME_ACCOUNT_PASSWORD_MAX,
-  isLayuiPanelGame,
   maxUsernameLenForGame,
+  validateCustomGameAccountCredentials,
 } from "@/lib/game-automation/account-username";
 import { previewJuwaUsername } from "@/lib/game-automation/juwa-credentials";
-import {
-  showGameLoadErrorDetail,
-  userFacingGameLoadError,
-} from "@/lib/game-automation/user-facing-errors";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { toast } from "sonner";
 import type { DepositRolloverBounds } from "@/lib/wallet/deposit-redeem-rollover";
@@ -174,7 +167,6 @@ export function GameWalletLoadSection({
     const justFailed = loads.find(
       (load) =>
         load.status === "failed" &&
-        load.error_message &&
         pendingJobIdsRef.current.has(load.id) &&
         !failedToastShownRef.current.has(load.id)
     );
@@ -182,10 +174,6 @@ export function GameWalletLoadSection({
       failedToastShownRef.current.add(justFailed.id);
       pendingJobIdsRef.current.delete(justFailed.id);
       failedToastRef.current = justFailed.id;
-      toast.error(
-        userFacingGameLoadError(justFailed.error_message, justFailed.load_type) ??
-          "Request failed. Try again or contact support."
-      );
       void refreshWallet();
     }
 
@@ -405,45 +393,19 @@ export function GameWalletLoadSection({
   }
 
   async function handleCreateCustom() {
-    const username = customUsername.trim();
-    const password = customPassword.trim();
-    if (username.length < 3) {
-      toast.error("Username must be at least 3 characters");
+    const validated = validateCustomGameAccountCredentials(
+      customUsername,
+      customPassword,
+      game.slug
+    );
+    if (!validated.ok) {
+      toast.error(validated.error);
       return;
     }
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-      toast.error("Username: letters, numbers, and underscores only");
-      return;
-    }
-    const maxLen = maxUsernameLenForGame(game.slug);
-    if (username.length > maxLen) {
-      toast.error(`Username must be at most ${maxLen} characters`);
-      return;
-    }
-    const normalizedUsername = ensureGameAccountUsername(username, game.slug);
-    if (isLayuiPanelGame(game.slug)) {
-      const layuiPassword = password.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-      if (
-        layuiPassword.length < GAME_ACCOUNT_PASSWORD_MIN ||
-        layuiPassword.length > GAME_ACCOUNT_PASSWORD_MAX
-      ) {
-        toast.error(
-          `Password must be ${GAME_ACCOUNT_PASSWORD_MIN}–${GAME_ACCOUNT_PASSWORD_MAX} letters and numbers only (no symbols)`
-        );
-        return;
-      }
-      if (!/[a-z]/.test(layuiPassword) || !/[0-9]/.test(layuiPassword)) {
-        toast.error("Password must include both letters and numbers (e.g. player1)");
-        return;
-      }
-      await handleCreateAccount({ username: normalizedUsername, password: layuiPassword });
-      return;
-    }
-    if (password.length < 4) {
-      toast.error("Password must be at least 4 characters");
-      return;
-    }
-    await handleCreateAccount({ username: normalizedUsername, password });
+    await handleCreateAccount({
+      username: validated.username,
+      password: validated.password,
+    });
   }
 
   async function handleCheckBalance() {
@@ -673,21 +635,32 @@ export function GameWalletLoadSection({
             <input
               type="text"
               value={customUsername}
-              onChange={(e) => setCustomUsername(e.target.value)}
-              placeholder="Username (letters, numbers, _)"
+              onChange={(e) =>
+                setCustomUsername(
+                  e.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(0, maxUsernameLenForGame(game.slug))
+                )
+              }
+              placeholder="Username (7–13 letters & numbers)"
+              minLength={7}
+              maxLength={maxUsernameLenForGame(game.slug)}
               autoComplete="off"
               className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-muted-foreground"
             />
             <input
               type="text"
               value={customPassword}
-              onChange={(e) => setCustomPassword(e.target.value)}
-              placeholder="Password"
+              onChange={(e) =>
+                setCustomPassword(e.target.value.replace(/[^a-zA-Z0-9]/g, "").slice(0, 13))
+              }
+              placeholder="Password (7–13 letters & numbers)"
+              minLength={7}
+              maxLength={13}
               autoComplete="off"
               className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-muted-foreground"
             />
             <p className="text-[11px] text-muted-foreground">
-              If the name is taken on the game server, we&apos;ll add a number/letter to keep it unique.
+              7–13 characters each, letters and numbers only (no symbols). If the name is taken, we&apos;ll
+              adjust it to stay unique.
             </p>
             <div className="flex gap-2">
               <button
@@ -1064,12 +1037,6 @@ export function GameWalletLoadSection({
                   {formatRelativeTime(load.created_at)}
                 </span>
               </div>
-              {load.status === "failed" &&
-                showGameLoadErrorDetail(load.error_message, load.load_type) && (
-                <p className="text-red-400/90 mt-1 leading-snug">
-                  {userFacingGameLoadError(load.error_message, load.load_type)}
-                </p>
-              )}
               {(load.status === "pending" || load.status === "processing") &&
                 isAutomatedGameSlug(game.slug) && (
                   <div className="text-muted-foreground mt-1 space-y-1">

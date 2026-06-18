@@ -6,7 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createNotification } from "@/lib/actions/notifications";
 import { notifyAdminOfWalletActivity } from "@/lib/telegram/notify-admin-wallet-activity";
 import { getJuwaAdminPanelUrl, getVegasAdminPanelUrl, getGameVaultAdminPanelUrl, getCashFrenzyAdminPanelUrl, isWalletLoadEnabledForGame, WALLET_LOAD_LIMITS } from "@/lib/game-automation/config";
-import { ensureGameAccountUsername, maxUsernameLenForGame } from "@/lib/game-automation/account-username";
+import { validateCustomGameAccountCredentials } from "@/lib/game-automation/account-username";
 import type { GameLoadWalletType } from "@/lib/game-automation/types";
 import {
   depositRolloverBounds,
@@ -55,24 +55,22 @@ export async function requestGameAccountCreate(input: {
   const rawUsername = input.username?.trim() || undefined;
   const password = input.password?.trim() || undefined;
 
-  if (rawUsername || password) {
-    if (!rawUsername || rawUsername.length < 3) {
-      return { error: "Username must be at least 3 characters." };
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(rawUsername)) {
-      return { error: "Username can only contain letters, numbers, and underscores." };
-    }
-    if (rawUsername.length > maxUsernameLenForGame(input.gameSlug)) {
-      return { error: `Username must be at most ${maxUsernameLenForGame(input.gameSlug)} characters.` };
-    }
-    if (!password || password.length < 4) {
-      return { error: "Password must be at least 4 characters." };
-    }
-  }
+  let username: string | undefined;
+  let finalPassword: string | undefined;
 
-  const username = rawUsername
-    ? ensureGameAccountUsername(rawUsername, input.gameSlug)
-    : undefined;
+  if (rawUsername || password) {
+    if (!rawUsername || !password) {
+      return { error: "Username and password are required for a custom login." };
+    }
+    const validated = validateCustomGameAccountCredentials(
+      rawUsername,
+      password,
+      input.gameSlug
+    );
+    if (!validated.ok) return { error: validated.error };
+    username = validated.username;
+    finalPassword = validated.password;
+  }
 
   const { data: pending } = await supabase
     .from("game_load_requests")
@@ -93,7 +91,7 @@ export async function requestGameAccountCreate(input: {
     p_game_slug: input.gameSlug,
     p_game_name: input.gameName,
     p_username: username ?? null,
-    p_password: password ?? null,
+    p_password: finalPassword ?? password ?? null,
     p_replace: input.replaceAccount ?? false,
   });
 

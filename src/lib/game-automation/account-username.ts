@@ -46,3 +46,51 @@ export function isLayuiPanelGame(slug: string): boolean {
     slug === "mr-all-in-one"
   );
 }
+
+const CUSTOM_ACCOUNT_ALNUM = /^[a-zA-Z0-9]+$/;
+
+/** Validate user-chosen username/password for "Create own login". */
+export function validateCustomGameAccountCredentials(
+  username: string,
+  password: string,
+  gameSlug: string
+): { ok: true; username: string; password: string } | { ok: false; error: string } {
+  const u = username.trim();
+  const p = password.trim();
+
+  if (u.length < GAME_ACCOUNT_USERNAME_MIN || u.length > GAME_ACCOUNT_USERNAME_MAX) {
+    return {
+      ok: false,
+      error: `Username must be ${GAME_ACCOUNT_USERNAME_MIN}–${GAME_ACCOUNT_USERNAME_MAX} characters.`,
+    };
+  }
+  if (!CUSTOM_ACCOUNT_ALNUM.test(u)) {
+    return {
+      ok: false,
+      error: "Username must be letters and numbers only (no symbols or spaces).",
+    };
+  }
+  if (p.length < GAME_ACCOUNT_PASSWORD_MIN || p.length > GAME_ACCOUNT_PASSWORD_MAX) {
+    return {
+      ok: false,
+      error: `Password must be ${GAME_ACCOUNT_PASSWORD_MIN}–${GAME_ACCOUNT_PASSWORD_MAX} characters.`,
+    };
+  }
+  if (!CUSTOM_ACCOUNT_ALNUM.test(p)) {
+    return {
+      ok: false,
+      error: "Password must be letters and numbers only (no symbols or spaces).",
+    };
+  }
+  if (isLayuiPanelGame(gameSlug) && (!/[a-zA-Z]/.test(p) || !/[0-9]/.test(p))) {
+    return {
+      ok: false,
+      error: "Password must include both letters and numbers (e.g. player1).",
+    };
+  }
+
+  const normalizedUsername = ensureGameAccountUsername(u, gameSlug);
+  const normalizedPassword = isLayuiPanelGame(gameSlug) ? p.toLowerCase() : p;
+
+  return { ok: true, username: normalizedUsername, password: normalizedPassword };
+}
