@@ -4,54 +4,56 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { broadcastAdminNotice, broadcastMaintenanceNotice } from "@/lib/actions/admin";
+import { broadcastAdminNotice } from "@/lib/actions/admin";
 import { toast } from "sonner";
 import { Megaphone } from "lucide-react";
 
-const DEFAULT_TITLE = "Site under maintenance";
-const DEFAULT_MESSAGE =
-  "Spinora is currently under maintenance. No requests (loads, redeems, new accounts, or deposits) will be approved until further notice. Thank you for your patience — we will update you when service resumes.";
+const MAINTENANCE_TEMPLATE = {
+  title: "Site under maintenance",
+  message:
+    "Spinora is currently under maintenance. No requests (loads, redeems, new accounts, or deposits) will be approved until further notice. Thank you for your patience — we will update you when service resumes.",
+} as const;
 
 export function AdminBroadcastNotice() {
-  const [title, setTitle] = useState(DEFAULT_TITLE);
-  const [message, setMessage] = useState(DEFAULT_MESSAGE);
+  const [title, setTitle] = useState("");
+  const [message, setMessage] = useState("");
   const [sendChat, setSendChat] = useState(true);
-  const [loading, setLoading] = useState<"custom" | "maintenance" | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  async function handleMaintenanceQuickSend() {
-    const ok = window.confirm(
-      "Send the maintenance notice to EVERY user?\n\nThey will get a notification and a support chat message."
-    );
-    if (!ok) return;
-
-    setLoading("maintenance");
-    const result = await broadcastMaintenanceNotice();
-    if (result.error) toast.error(result.error);
-    else toast.success(`Maintenance notice sent to ${result.count ?? 0} users`);
-    setLoading(null);
+  function applyMaintenanceTemplate() {
+    setTitle(MAINTENANCE_TEMPLATE.title);
+    setMessage(MAINTENANCE_TEMPLATE.message);
+    toast.message("Maintenance template loaded — edit the text, then click Send to all users.");
   }
 
-  async function handleCustomSend() {
-    if (!title.trim() || !message.trim()) {
-      toast.error("Enter a title and message");
+  async function handleSend() {
+    const trimmedTitle = title.trim();
+    const trimmedMessage = message.trim();
+
+    if (!trimmedTitle || !trimmedMessage) {
+      toast.error("Enter a title and message first");
       return;
     }
 
     const ok = window.confirm(
-      `Send this notice to EVERY user?\n\nTitle: ${title.trim()}\n\nThey will get a notification${sendChat ? " and a support chat message" : ""}.`
+      `Send this notice to EVERY user?\n\nTitle: ${trimmedTitle}\n\nThey will get a notification${sendChat ? " and a support chat message" : ""}.`
     );
     if (!ok) return;
 
-    setLoading("custom");
+    setLoading(true);
     const result = await broadcastAdminNotice({
-      title: title.trim(),
-      message: message.trim(),
+      title: trimmedTitle,
+      message: trimmedMessage,
       type: "warning",
       sendChat,
     });
     if (result.error) toast.error(result.error);
-    else toast.success(`Notice sent to ${result.count ?? 0} users`);
-    setLoading(null);
+    else {
+      toast.success(`Notice sent to ${result.count ?? 0} users`);
+      setTitle("");
+      setMessage("");
+    }
+    setLoading(false);
   }
 
   return (
@@ -63,8 +65,8 @@ export function AdminBroadcastNotice() {
         <div className="min-w-0">
           <h2 className="font-semibold text-white">Broadcast notice to all users</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Sends an in-app notification to every user. Optionally also posts in their Support chat
-            so they see it when they open Messages.
+            Type your own title and message below, then send. Every non-admin user gets an in-app
+            notification. Optionally also posts in their Support chat.
           </p>
         </div>
       </div>
@@ -72,13 +74,19 @@ export function AdminBroadcastNotice() {
       <div className="space-y-3">
         <div>
           <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Title</label>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1" />
+          <Input
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Service update, New promo, Maintenance"
+            className="mt-1"
+          />
         </div>
         <div>
           <label className="text-[10px] text-muted-foreground uppercase tracking-wide">Message</label>
           <Textarea
             value={message}
             onChange={(e) => setMessage(e.target.value)}
+            placeholder="Write the notice users will see…"
             rows={4}
             className="mt-1 resize-y min-h-[96px]"
           />
@@ -98,13 +106,13 @@ export function AdminBroadcastNotice() {
         <Button
           variant="default"
           className="bg-amber-600 hover:bg-amber-700"
-          onClick={handleMaintenanceQuickSend}
-          disabled={!!loading}
+          onClick={handleSend}
+          disabled={loading}
         >
-          {loading === "maintenance" ? "Sending…" : "Send maintenance notice now"}
+          {loading ? "Sending…" : "Send to all users"}
         </Button>
-        <Button variant="outline" onClick={handleCustomSend} disabled={!!loading}>
-          {loading === "custom" ? "Sending…" : "Send custom notice"}
+        <Button type="button" variant="outline" onClick={applyMaintenanceTemplate} disabled={loading}>
+          Load maintenance template
         </Button>
       </div>
     </div>
