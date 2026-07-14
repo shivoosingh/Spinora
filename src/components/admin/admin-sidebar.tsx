@@ -53,6 +53,7 @@ export function AdminSidebar({
                   <li key={item.href}>
                     <Link
                       href={item.href}
+                      prefetch
                       onClick={onNavigate}
                       aria-current={active ? "page" : undefined}
                       className={cn(

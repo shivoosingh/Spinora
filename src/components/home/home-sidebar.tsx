@@ -57,6 +57,8 @@ interface HomeSidebarProps {
   onSearchClick: () => void;
   walletSlot?: React.ReactNode;
   className?: string;
+  /** From server session — sidebar renders account links on first paint. */
+  initialLoggedIn?: boolean;
 }
 
 function SidebarFooter({
@@ -101,11 +103,12 @@ export function HomeSidebar({
   onSearchClick,
   walletSlot,
   className,
+  initialLoggedIn = false,
 }: HomeSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const prefetched = useRef(new Set<string>());
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(initialLoggedIn);
   const { count: unreadMessages } = useUnreadMessages();
 
   function warmRoute(href: string) {
@@ -115,28 +118,19 @@ export function HomeSidebar({
   }
 
   useEffect(() => {
-    const run = () => {
-      import("@/lib/supabase/client").then(({ createClient }) => {
-        const supabase = createClient();
-        if (!supabase) return;
-        void supabase.auth.getSession().then(({ data: { session } }) => {
-          const loggedIn = !!session?.user;
-          setIsLoggedIn(loggedIn);
-          if (loggedIn) {
-            for (const href of PREFETCH_ROUTES) {
-              warmRoute(href);
-            }
+    import("@/lib/supabase/client").then(({ createClient }) => {
+      const supabase = createClient();
+      if (!supabase) return;
+      void supabase.auth.getSession().then(({ data: { session } }) => {
+        const loggedIn = !!session?.user;
+        setIsLoggedIn(loggedIn);
+        if (loggedIn) {
+          for (const href of PREFETCH_ROUTES) {
+            warmRoute(href);
           }
-        });
+        }
       });
-    };
-
-    if ("requestIdleCallback" in window) {
-      const id = window.requestIdleCallback(run, { timeout: 1200 });
-      return () => window.cancelIdleCallback(id);
-    }
-    const timer = setTimeout(run, 300);
-    return () => clearTimeout(timer);
+    });
   }, [router]);
 
   return (

@@ -31,10 +31,10 @@ export function DeferredWalletCardLoader(props: DeferredWalletCardLoaderProps) {
   useEffect(() => {
     const start = () => setShow(true);
     if ("requestIdleCallback" in window) {
-      const id = requestIdleCallback(start, { timeout: 2000 });
+      const id = requestIdleCallback(start, { timeout: 400 });
       return () => cancelIdleCallback(id);
     }
-    const timer = setTimeout(start, 800);
+    const timer = setTimeout(start, 150);
     return () => clearTimeout(timer);
   }, []);
 

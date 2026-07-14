@@ -20,7 +20,6 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 import { LazyWhenVisible } from "@/components/ui/lazy-when-visible";
-import { usePrefetchDashboardRoutes } from "@/lib/dashboard/prefetch-dashboard-routes";
 
 function SectionPlaceholder() {
   return <div className="h-32 rounded-xl bg-white/[0.03] animate-pulse" aria-hidden />;
@@ -78,15 +77,20 @@ const MAIN_TABS: { id: HomeGameTab; label: string }[] = [
 ];
 
 interface HomeLandingShellProps {
+  /** Server-resolved login state — sidebar account links paint immediately. */
+  initialLoggedIn?: boolean;
   /** Server-rendered hero for fast LCP on mobile */
   hero?: ReactNode;
   /** Optional CMS-driven sections (FAQs, reviews, guides) from the database */
   cmsSections?: ReactNode;
 }
 
-export function HomeLandingShell({ hero, cmsSections }: HomeLandingShellProps) {
+export function HomeLandingShell({
+  initialLoggedIn = false,
+  hero,
+  cmsSections,
+}: HomeLandingShellProps) {
   const router = useRouter();
-  usePrefetchDashboardRoutes();
   const [sidebarTab, setSidebarTab] = useState<GameTab>("all");
   const [mainTab, setMainTab] = useState<HomeGameTab>("trending");
   const [search, setSearch] = useState("");
@@ -127,10 +131,11 @@ export function HomeLandingShell({ hero, cmsSections }: HomeLandingShellProps) {
       onSearchClick={handleHeaderSearch}
       sidebar={
         <HomeSidebar
+          initialLoggedIn={initialLoggedIn}
           activeTab={sidebarTab}
           onTabChange={handleSidebarTab}
           onSearchClick={handleHeaderSearch}
-          walletSlot={<DeferredWalletCardLoader />}
+          walletSlot={initialLoggedIn ? <DeferredWalletCardLoader /> : undefined}
         />
       }
     >

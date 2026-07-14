@@ -5,14 +5,16 @@ import { HomeFaq } from "@/components/spinora/home-faq";
 import { HomeGuides } from "@/components/spinora/home-guides";
 import { HomeReviews } from "@/components/spinora/home-reviews";
 import { getFaqs, getHomepageReviews, getLatestBlogPosts } from "@/lib/data/marketing";
+import { getAuthUser } from "@/lib/supabase/session";
 
 export const revalidate = 300;
 
 export default async function HomePage() {
-  const [faqs, reviews, guides] = await Promise.all([
+  const [faqs, reviews, guides, user] = await Promise.all([
     getFaqs(),
     getHomepageReviews(),
     getLatestBlogPosts(),
+    getAuthUser(),
   ]);
 
   const cmsSections = (
@@ -24,5 +26,11 @@ export default async function HomePage() {
     </div>
   );
 
-  return <HomeLandingShell hero={<HeroStatic />} cmsSections={cmsSections} />;
+  return (
+    <HomeLandingShell
+      initialLoggedIn={!!user}
+      hero={<HeroStatic />}
+      cmsSections={cmsSections}
+    />
+  );
 }
