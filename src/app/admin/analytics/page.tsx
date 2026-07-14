@@ -6,7 +6,7 @@ import {
   CoinsBarChart,
   SignupsAreaChart,
   TierPieChart,
-} from "@/components/admin/analytics-charts";
+} from "@/components/admin/analytics-charts-lazy";
 import { GlassCard } from "@/components/shared/glass-card";
 import { StatCard } from "@/components/shared/stat-card";
 import { adminDb } from "@/lib/actions/admin/core";

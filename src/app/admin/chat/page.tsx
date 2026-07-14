@@ -18,7 +18,8 @@ export default async function AdminChatPage({
         "id, user_id, updated_at, user:profiles!conversations_user_id_fkey(full_name, email, is_online, last_seen_at)"
       )
       .eq("is_active", true)
-      .order("updated_at", { ascending: false }),
+      .order("updated_at", { ascending: false })
+      .limit(80),
     getAdminConversationUnreads(),
   ]);
 

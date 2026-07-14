@@ -12,6 +12,7 @@ const nextConfig: NextConfig = {
   },
   images: {
     formats: ["image/avif", "image/webp"],
+    minimumCacheTTL: 86400,
     remotePatterns: [
       {
         protocol: "https",
@@ -28,9 +29,13 @@ const nextConfig: NextConfig = {
       "lucide-react",
       "framer-motion",
       "sonner",
+      "date-fns",
+      "recharts",
       "@supabase/supabase-js",
       "@radix-ui/react-dropdown-menu",
       "@radix-ui/react-select",
+      "@radix-ui/react-dialog",
+      "@radix-ui/react-tabs",
     ],
   },
 };

@@ -1,15 +1,17 @@
 import { GameCard } from "@/components/home/game-card";
-import { getGames } from "@/lib/data/marketing";
+import { getGames, type MarketingGame } from "@/lib/data/marketing";
 import { marketingGamesToCards } from "@/lib/games-marketing";
 
 export async function MarketingGameGrid({
   title = "Choose your game",
   lede = "Pick any game below — create your account, load credits from your wallet, and play.",
+  catalog: catalogProp,
 }: {
   title?: string;
   lede?: string;
+  catalog?: MarketingGame[];
 }) {
-  const catalog = await getGames();
+  const catalog = catalogProp ?? (await getGames());
   const games = marketingGamesToCards(catalog);
 
   return (

@@ -61,7 +61,7 @@ export const getStaffContext = cache(async (): Promise<StaffContext | null> => {
 
   const { data: roleRows, error: roleError } = await supabase
     .from("user_roles")
-    .select("roles(key)")
+    .select("roles(key, role_permissions(permissions(key)))")
     .eq("user_id", user.id);
 
   const roles =
@@ -78,15 +78,10 @@ export const getStaffContext = cache(async (): Promise<StaffContext | null> => {
 
   const isSuperAdmin = roles.includes("super_admin");
 
-  // gather permissions from role_permissions
-  const { data: permRows } = await supabase
-    .from("user_roles")
-    .select("roles(role_permissions(permissions(key)))")
-    .eq("user_id", user.id);
-
   const permissions = new Set<string>();
-  for (const row of permRows ?? []) {
+  for (const row of roleRows ?? []) {
     const role = row.roles as unknown as {
+      key?: AppRole;
       role_permissions?: { permissions?: { key: string } | null }[];
     } | null;
     for (const rp of role?.role_permissions ?? []) {

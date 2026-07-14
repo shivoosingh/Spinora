@@ -23,8 +23,8 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Dashboard: trust session cookie — layout validates user (skips slow auth API on every click)
-  if (path.startsWith("/dashboard") && hasSupabaseSession) {
+  // Dashboard + admin: trust session cookie — layout validates user (skips slow auth API on every click)
+  if ((path.startsWith("/dashboard") || path.startsWith("/admin")) && hasSupabaseSession) {
     return NextResponse.next({ request });
   }
 

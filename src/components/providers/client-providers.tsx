@@ -40,10 +40,10 @@ export function ClientProviders({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const Provider =
-    loggedIn === false && !needsRealtimeImmediately(pathname)
-      ? MessageRealtimeStubProvider
-      : MessageRealtimeProvider;
+  const useRealtime =
+    loggedIn === true && needsRealtimeImmediately(pathname);
+
+  const Provider = useRealtime ? MessageRealtimeProvider : MessageRealtimeStubProvider;
 
   return (
     <>

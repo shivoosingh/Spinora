@@ -39,6 +39,7 @@ export default async function GamesCatalogPage() {
         <MarketingGameGrid
           title="All games"
           lede={`${catalog.length || "12"}+ titles — fish tables, slots and arcade games.`}
+          catalog={catalog}
         />
       </main>
       <Footer />

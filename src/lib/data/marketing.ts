@@ -422,25 +422,26 @@ const FALLBACK_GAMES: MarketingGame[] = [
   { id: "b3", slug: "cash-machine",  name: "Cash Machine",   description: "Steady paylines and a generous free-spin engine — the Cash Machine rewards consistent play with sweeps coin payouts.",             image_url: null, badge_text: null,   is_featured: false, popularity: 75,  play_url: null, download_url: null },
 ];
 
-export async function getGames(): Promise<MarketingGame[]> {
-  // Admin-managed catalog (DB) is the source of truth for the public grid, so
-  // games/images/links edited in /admin/games appear everywhere. Game pages
-  // (/games/[slug]) resolve DB games too (see games/[slug]/page.tsx), so grid
-  // links never 404. Falls back to the static seed list when the DB is empty.
-  return withFallback(
-    (async () => {
-      const supabase = createStaticClient();
-      const { data, error } = await supabase
-        .from("games")
-        .select("id, slug, name, description, image_url, badge_text, is_featured, popularity, play_url, download_url")
-        .eq("is_active", true)
-        .order("popularity", { ascending: false });
-      if (error || !data?.length) return null;
-      return data as MarketingGame[];
-    })(),
-    FALLBACK_GAMES,
-  );
-}
+export const getGames = unstable_cache(
+  async (): Promise<MarketingGame[]> =>
+    withFallback(
+      (async () => {
+        const supabase = createStaticClient();
+        const { data, error } = await supabase
+          .from("games")
+          .select(
+            "id, slug, name, description, image_url, badge_text, is_featured, popularity, play_url, download_url"
+          )
+          .eq("is_active", true)
+          .order("popularity", { ascending: false });
+        if (error || !data?.length) return null;
+        return data as MarketingGame[];
+      })(),
+      FALLBACK_GAMES
+    ),
+  ["marketing-games"],
+  { revalidate: 300 }
+);
 
 // ── Geo (state/city) pages — admin-managed, static fallback = GEO_STATES ────
 
