@@ -71,7 +71,10 @@ export type TelegramPromoRunResult =
   | { ok: false; error: string };
 
 /** Post the next promo in the rotation pool to your Telegram channel/group. */
-export async function runTelegramPromoBroadcast(): Promise<TelegramPromoRunResult> {
+export async function runTelegramPromoBroadcast(options?: {
+  /** Manual "Send test now" skips the admin toggle check. */
+  force?: boolean;
+}): Promise<TelegramPromoRunResult> {
   if (!isTelegramPromoConfigured()) {
     return {
       ok: true,
@@ -80,7 +83,7 @@ export async function runTelegramPromoBroadcast(): Promise<TelegramPromoRunResul
     };
   }
 
-  const enabled = await isTelegramPromoEnabled();
+  const enabled = options?.force ? true : await isTelegramPromoEnabled();
   if (!enabled) {
     return { ok: true, status: "skipped", reason: "Telegram promo broadcast is disabled in Admin → Settings" };
   }

@@ -130,13 +130,16 @@ export function SettingsEditor({ initial }: { initial: Settings }) {
           <div>
             <h2 className="font-bold">Telegram promo broadcast</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Enabled while the pool below has active messages — the cron rotates
-              through them automatically, posting the longest-unsent one each run.
+              Toggle saves automatically. The pool below must have active messages —
+              the cron rotates through them, posting the longest-unsent one each run.
             </p>
           </div>
           <Switch
             checked={promoEnabled}
-            onCheckedChange={setPromoEnabled}
+            onCheckedChange={(checked) => {
+              setPromoEnabled(checked);
+              save("telegram_promo", { enabled: checked });
+            }}
             aria-label="Telegram promo broadcast enabled"
           />
         </div>

@@ -103,7 +103,7 @@ export async function sendTelegramPromoNowAction(): Promise<AdminActionResult> {
   if ("error" in auth) return { ok: false, error: auth.error };
 
   const { runTelegramPromoBroadcast } = await import("@/lib/telegram/promo-broadcast");
-  const result = await runTelegramPromoBroadcast();
+  const result = await runTelegramPromoBroadcast({ force: true });
 
   if (!result.ok) {
     return { ok: false, error: result.error };
