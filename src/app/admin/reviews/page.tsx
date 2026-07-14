@@ -21,7 +21,10 @@ export default async function AdminReviewsPage() {
     .select(REVIEW_AUTHOR_SELECT)
     .order("created_at", { ascending: false });
 
-  const rows = (reviews ?? []) as ReviewWithAuthor[];
+  const rows: ReviewWithAuthor[] = (reviews ?? []).map((row) => {
+    const author = Array.isArray(row.author) ? row.author[0] ?? null : row.author;
+    return { ...row, author } as ReviewWithAuthor;
+  });
   const likedCount = rows.filter((r) => r.admin_liked).length;
 
   return (
