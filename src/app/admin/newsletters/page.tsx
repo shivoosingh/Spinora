@@ -3,10 +3,8 @@ import { format } from "date-fns";
 
 import { AdminPageHeader } from "@/components/admin/admin-page-header";
 import { ConfirmActionButton } from "@/components/admin/confirm-action-button";
-import {
-  NewsletterCampaignDialog,
-  simpleFormToCampaignPayload,
-} from "@/components/admin/newsletter-campaign-dialog";
+import { NewsletterCampaignDialog } from "@/components/admin/newsletter-campaign-dialog";
+import { simpleFormToCampaignPayload } from "@/lib/email/newsletter-form";
 import { GlassCard } from "@/components/shared/glass-card";
 import { Badge } from "@/components/ui/badge";
 import {
