@@ -82,17 +82,25 @@ export default async function AdminNewslettersPage() {
         <h2 className="font-semibold">Quick guide</h2>
         <ol className="mt-3 space-y-2 text-sm text-muted-foreground list-decimal list-inside">
           <li>
-            <strong className="text-foreground">New campaign</strong> → write subject + message →
+            <strong className="text-foreground">New campaign</strong> → pick a{" "}
+            <strong className="text-foreground">template</strong> → tweak subject/message if needed →
             choose <strong className="text-foreground">Test — my email only</strong> → Save
           </li>
           <li>
-            Click <strong className="text-foreground">Send test</strong> → check your inbox
+            Click <strong className="text-foreground">Send test</strong> → check your inbox (and spam
+            once — mark “Not spam” so future emails land in inbox)
           </li>
           <li>
-            Edit campaign → change audience to <strong className="text-foreground">All players</strong>{" "}
-            → Save → <strong className="text-foreground">Send to everyone</strong>
+            Happy with it? Edit → audience <strong className="text-foreground">All players</strong> →
+            Save → <strong className="text-foreground">Send to everyone</strong>
           </li>
         </ol>
+        <p className="mt-4 text-xs text-muted-foreground border-t border-border pt-4">
+          <strong className="text-foreground">Inbox tip:</strong> In Resend, verify{" "}
+          <code className="text-foreground">spinoracasinos.com</code> (SPF + DKIM + DMARC). Send from{" "}
+          <code className="text-foreground">noreply@spinoracasinos.com</code> only after the domain
+          shows “Verified”. Ask new players to mark the first email as Not spam.
+        </p>
       </GlassCard>
 
       <GlassCard className="overflow-hidden">

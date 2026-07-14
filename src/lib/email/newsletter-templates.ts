@@ -1,10 +1,8 @@
 /**
- * WinSweeps marketing/newsletter emails — same visual system as
- * templates.ts's transactional shell(), extended with a hero + stat strip
- * for promo campaigns. Wired to the bulk-send flow in
- * src/lib/actions/admin/newsletters.ts (customCampaignEmail).
- * Regenerate for a new campaign via the `newsletter-email` skill.
+ * Spinora marketing/newsletter emails — promo campaigns via Resend.
  */
+
+import { SITE_NAME, SITE_URL } from "@/lib/constants";
 
 const BG = "#060606";
 const SURFACE = "#0f1115";
@@ -32,6 +30,7 @@ interface NewsletterOpts {
 }
 
 function newsletterShell(opts: NewsletterOpts) {
+  const preheader = opts.subhead || opts.heading;
   const statsRow = opts.stats?.length
     ? `<tr><td style="padding:0 32px 24px;">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
@@ -63,6 +62,7 @@ function newsletterShell(opts: NewsletterOpts) {
     <meta name="supported-color-schemes" content="dark" />
   </head>
   <body style="margin:0;padding:0;background:${BG};color:${TEXT};font-family:'Helvetica Neue',Arial,sans-serif;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${preheader}</div>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${BG};padding:32px 16px;">
       <tr><td align="center">
         <table role="presentation" width="100%" style="max-width:520px;background:${SURFACE};border:1px solid ${BORDER};border-radius:16px;overflow:hidden;">
@@ -87,10 +87,10 @@ function newsletterShell(opts: NewsletterOpts) {
             <a href="${opts.cta.href}" style="display:inline-block;background:linear-gradient(135deg,${GOLD_BRIGHT},${GOLD_DEEP});color:#1a1405;font-weight:800;text-decoration:none;padding:14px 32px;border-radius:999px;font-size:14px;text-transform:uppercase;letter-spacing:0.05em;">${opts.cta.label}</a>
           </td></tr>
           <tr><td style="padding:24px 32px;border-top:1px solid ${BORDER};">
-            <p style="margin:0;font-size:12px;color:${MUTED};">You're receiving this because you have a WinSweeps account. Manage your email preferences in your dashboard settings.</p>
+            <p style="margin:0;font-size:12px;color:${MUTED};">You're receiving this because you have a ${SITE_NAME} account. <a href="${SITE_URL}/dashboard/settings" style="color:${MUTED};">Manage email preferences</a> or reply with "unsubscribe".</p>
           </td></tr>
         </table>
-        <p style="margin:16px 0 0;font-size:11px;color:${MUTED};">© ${new Date().getFullYear()} WinSweeps · Immersive Social Gaming Excellence</p>
+        <p style="margin:16px 0 0;font-size:11px;color:${MUTED};">© ${new Date().getFullYear()} ${SITE_NAME} · ${SITE_URL.replace(/^https?:\/\//, "")}</p>
       </td></tr>
     </table>
   </body>

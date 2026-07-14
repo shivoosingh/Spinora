@@ -31,7 +31,18 @@ import {
   simpleFormToCampaignPayload,
   type SimpleNewsletterInput,
 } from "@/lib/email/newsletter-form";
+import { NEWSLETTER_PRESETS, presetToSimpleForm } from "@/lib/email/newsletter-presets";
 import { customCampaignEmail } from "@/lib/email/newsletter-templates";
+
+function statsFromForm(v: SimpleNewsletterInput) {
+  return (
+    [
+      v.stat1_value && v.stat1_label ? { value: v.stat1_value, label: v.stat1_label } : null,
+      v.stat2_value && v.stat2_label ? { value: v.stat2_value, label: v.stat2_label } : null,
+      v.stat3_value && v.stat3_label ? { value: v.stat3_value, label: v.stat3_label } : null,
+    ] as ({ value: string; label: string } | null)[]
+  ).filter((s): s is { value: string; label: string } => s !== null);
+}
 
 export function NewsletterCampaignDialog({
   title,
@@ -59,6 +70,12 @@ export function NewsletterCampaignDialog({
     }
   }, [open, initial]);
 
+  function applyTemplate(templateId: string) {
+    setValues((prev) => ({
+      ...presetToSimpleForm(templateId, prev.segment),
+    }));
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     if (!values.subject.trim() || !values.message.trim()) {
@@ -78,14 +95,18 @@ export function NewsletterCampaignDialog({
   }
 
   const payload = simpleFormToCampaignPayload(values);
+  const stats = statsFromForm(values);
   const preview = customCampaignEmail({
     subject: payload.subject,
     eyebrow: payload.eyebrow,
     heading: payload.heading,
     subhead: payload.subhead,
     body: payload.body,
+    stats: stats.length ? stats : undefined,
     cta: { label: payload.cta_label, href: payload.cta_href },
   });
+
+  const selectedPreset = NEWSLETTER_PRESETS.find((p) => p.id === values.template_id);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -109,29 +130,37 @@ export function NewsletterCampaignDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <p className="text-sm text-muted-foreground">
-            Fill in the promo — players get a branded email with a button link.
+            Pick a template, tweak the message if you want, then send a test.
           </p>
         </DialogHeader>
         <div className="grid gap-6 lg:grid-cols-[minmax(300px,1fr)_340px]">
           <form onSubmit={submit} className="min-w-0 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="nl-subject">Email subject *</Label>
-              <Input
-                id="nl-subject"
-                placeholder="🎰 50% bonus this weekend — Spinora"
-                value={values.subject}
-                onChange={(e) => setValues((v) => ({ ...v, subject: e.target.value }))}
-              />
-              <p className="text-xs text-muted-foreground">What they see in their inbox.</p>
+              <Label htmlFor="nl-template">Template</Label>
+              <Select value={values.template_id} onValueChange={applyTemplate}>
+                <SelectTrigger id="nl-template" className="w-full">
+                  <SelectValue placeholder="Choose a template" />
+                </SelectTrigger>
+                <SelectContent>
+                  {NEWSLETTER_PRESETS.map((preset) => (
+                    <SelectItem key={preset.id} value={preset.id}>
+                      {preset.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedPreset ? (
+                <p className="text-xs text-muted-foreground">{selectedPreset.description}</p>
+              ) : null}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="nl-heading">Big headline (optional)</Label>
+              <Label htmlFor="nl-subject">Email subject *</Label>
               <Input
-                id="nl-heading"
-                placeholder="Same as subject if left blank"
-                value={values.heading}
-                onChange={(e) => setValues((v) => ({ ...v, heading: e.target.value }))}
+                id="nl-subject"
+                placeholder="Your 50% welcome bonus is ready at Spinora"
+                value={values.subject}
+                onChange={(e) => setValues((v) => ({ ...v, subject: e.target.value }))}
               />
             </div>
 
@@ -140,30 +169,13 @@ export function NewsletterCampaignDialog({
               <Textarea
                 id="nl-message"
                 rows={5}
-                placeholder="Get 50% extra on your next deposit this weekend only. Play Fire Kirin, Juwa, and more."
+                placeholder="Edit the template message here if needed."
                 value={values.message}
                 onChange={(e) => setValues((v) => ({ ...v, message: e.target.value }))}
               />
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="nl-cta-label">Button text</Label>
-                <Input
-                  id="nl-cta-label"
-                  value={values.cta_label}
-                  onChange={(e) => setValues((v) => ({ ...v, cta_label: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="nl-cta-href">Button link</Label>
-                <Input
-                  id="nl-cta-href"
-                  type="url"
-                  value={values.cta_href}
-                  onChange={(e) => setValues((v) => ({ ...v, cta_href: e.target.value }))}
-                />
-              </div>
+              <p className="text-xs text-muted-foreground">
+                Headline, stats and button come from the template. Edit below only if needed.
+              </p>
             </div>
 
             <div className="space-y-2">
@@ -198,14 +210,51 @@ export function NewsletterCampaignDialog({
               Advanced (optional)
             </Button>
             {advancedOpen && (
-              <div className="space-y-2 pt-2">
-                <Label htmlFor="nl-name">Internal name (for your list only)</Label>
-                <Input
-                  id="nl-name"
-                  placeholder="Defaults to subject line"
-                  value={values.name}
-                  onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
-                />
+              <div className="space-y-4 pt-2">
+                <div className="space-y-2">
+                  <Label htmlFor="nl-heading">Headline</Label>
+                  <Input
+                    id="nl-heading"
+                    value={values.heading}
+                    onChange={(e) => setValues((v) => ({ ...v, heading: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="nl-subhead">Subheadline</Label>
+                  <Input
+                    id="nl-subhead"
+                    value={values.subhead}
+                    onChange={(e) => setValues((v) => ({ ...v, subhead: e.target.value }))}
+                  />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="nl-cta-label">Button text</Label>
+                    <Input
+                      id="nl-cta-label"
+                      value={values.cta_label}
+                      onChange={(e) => setValues((v) => ({ ...v, cta_label: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="nl-cta-href">Button link</Label>
+                    <Input
+                      id="nl-cta-href"
+                      type="url"
+                      value={values.cta_href}
+                      onChange={(e) => setValues((v) => ({ ...v, cta_href: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="nl-name">Internal name (for your list only)</Label>
+                  <Input
+                    id="nl-name"
+                    placeholder="Defaults to subject line"
+                    value={values.name}
+                    onChange={(e) => setValues((v) => ({ ...v, name: e.target.value }))}
+                  />
+                </div>
               </div>
             )}
 

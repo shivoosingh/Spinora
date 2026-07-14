@@ -11,6 +11,12 @@ import {
   writeAudit,
 } from "@/lib/actions/admin/core";
 import { customCampaignEmail } from "@/lib/email/newsletter-templates";
+import {
+  htmlToPlainText,
+  promoEmailFooterPlain,
+  promoEmailHeaders,
+  PROMO_REPLY_TO,
+} from "@/lib/email/deliverability";
 import { FROM, getResend } from "@/lib/email/resend";
 
 const campaignSchema = z.object({
@@ -271,11 +277,22 @@ export async function processCampaignBatch(campaignId: string, limit = BATCH_SIZ
     cta: { label: campaign.cta_label, href: campaign.cta_href },
   });
 
+  const text = htmlToPlainText(html) + promoEmailFooterPlain();
+
   let sent = 0;
   let failed = 0;
 
   for (const recipient of pending) {
-    const { error } = await resend.emails.send({ from: FROM, to: recipient.email, subject, html });
+    const { error } = await resend.emails.send({
+      from: FROM,
+      to: recipient.email,
+      replyTo: PROMO_REPLY_TO,
+      subject,
+      html,
+      text,
+      headers: promoEmailHeaders(),
+      tags: [{ name: "category", value: "promo" }],
+    });
     if (error) {
       failed += 1;
       await admin
