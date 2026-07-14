@@ -40,10 +40,27 @@ export default async function AdminNewslettersPage() {
   await requirePermission("newsletters.manage");
   const db = adminDb();
 
-  const { data } = await db
+  const { data, error } = await db
     .from("newsletter_campaigns")
     .select("*")
     .order("created_at", { ascending: false });
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <AdminPageHeader
+          title="Email promos"
+          description="Send promo emails to players who signed up on Spinora."
+        />
+        <GlassCard className="p-6 text-sm text-muted-foreground">
+          Newsletter tables are not set up yet. Run{" "}
+          <code className="text-foreground">supabase/admin-essentials/44-newsletters.sql</code>{" "}
+          in the Supabase SQL Editor, then refresh this page.
+        </GlassCard>
+      </div>
+    );
+  }
+
   const campaigns = (data ?? []) as NewsletterCampaign[];
 
   return (
