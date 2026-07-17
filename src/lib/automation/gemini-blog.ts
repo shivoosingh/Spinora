@@ -1,5 +1,7 @@
 import "server-only";
 
+const DEFAULT_MODEL = "gemini-2.0-flash";
+
 export interface GeminiBlogDraft {
   title: string;
   excerpt: string;
@@ -10,12 +12,8 @@ export interface GeminiBlogDraft {
   image_prompt: string;
 }
 
-const MODEL_FALLBACKS = ["gemini-2.0-flash", "gemini-2.0-flash-001", "gemini-2.0-flash-lite"];
-
-function modelCandidates(): string[] {
-  const preferred = process.env.GEMINI_BLOG_MODEL?.trim();
-  if (preferred) return [preferred, ...MODEL_FALLBACKS.filter((m) => m !== preferred)];
-  return MODEL_FALLBACKS;
+function modelId(): string {
+  return process.env.GEMINI_BLOG_MODEL?.trim() || DEFAULT_MODEL;
 }
 
 function parseGeminiJson(text: string): GeminiBlogDraft {
@@ -55,84 +53,65 @@ Return ONLY valid JSON (no markdown fences) with keys:
  seo_description (string, max 160 chars)
  image_prompt (string, describe a cinematic blog hero image, no text in image)`;
 
-  const body = JSON.stringify({
-    contents: [{ parts: [{ text: prompt }] }],
-    generationConfig: {
-      responseMimeType: "application/json",
-      temperature: 0.7,
-    },
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelId()}:generateContent?key=${encodeURIComponent(apiKey)}`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.7,
+      },
+    }),
   });
 
-  let lastError = "Gemini request failed.";
-
-  for (const model of modelCandidates()) {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body,
-    });
-
-    if (!res.ok) {
-      let detail = await res.text().catch(() => "");
-      try {
-        const parsed = JSON.parse(detail) as { error?: { message?: string } };
-        if (parsed.error?.message) detail = parsed.error.message;
-      } catch {
-        /* keep raw text */
-      }
-
-      lastError = detail;
-
-      if (res.status === 404 && /no longer available|not found/i.test(detail)) {
-        continue;
-      }
-
-      if (res.status === 429 || /quota|RESOURCE_EXHAUSTED|limit: 0/i.test(detail)) {
-        throw new Error(
-          "Gemini blocked this key (free tier quota is 0). Fix: (1) In AI Studio click “Set up billing” for the project, wait 5 minutes, OR (2) create a brand-new API key in a new project and never share it publicly — leaked keys are auto-disabled."
-        );
-      }
-      if (res.status === 400 && /API key not valid|API_KEY_INVALID/i.test(detail)) {
-        throw new Error(
-          "Invalid Gemini API key. Create a fresh key at https://aistudio.google.com/apikey"
-        );
-      }
-
-      throw new Error(`Gemini API error (${res.status}): ${detail.slice(0, 300)}`);
+  if (!res.ok) {
+    let detail = await res.text().catch(() => "");
+    try {
+      const parsed = JSON.parse(detail) as { error?: { message?: string } };
+      if (parsed.error?.message) detail = parsed.error.message;
+    } catch {
+      /* keep raw text */
     }
-
-    const data = (await res.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text?.trim()) {
-      throw new Error("Gemini returned an empty response.");
+    if (res.status === 429 || /quota|RESOURCE_EXHAUSTED/i.test(detail)) {
+      throw new Error(
+        "Gemini API quota exceeded for this key. Create a new key at https://aistudio.google.com/apikey (starts with AIzaSy) or enable billing on your Google Cloud project."
+      );
     }
-
-    const draft = parseGeminiJson(text);
-
-    if (!draft.title?.trim() || !draft.content?.trim()) {
-      throw new Error("Gemini JSON missing title or content.");
+    if (res.status === 400 && /API key not valid|API_KEY_INVALID/i.test(detail)) {
+      throw new Error(
+        "Invalid Gemini API key. Create one at https://aistudio.google.com/apikey — it should start with AIzaSy."
+      );
     }
-
-    return {
-      title: draft.title.trim(),
-      excerpt: (draft.excerpt ?? "").trim(),
-      content: draft.content.trim(),
-      tags: Array.isArray(draft.tags) ? draft.tags.map(String) : [],
-      seo_title: (draft.seo_title ?? draft.title).trim().slice(0, 70),
-      seo_description: (draft.seo_description ?? draft.excerpt ?? "").trim().slice(0, 200),
-      image_prompt: (draft.image_prompt ?? draft.title).trim(),
-    };
+    throw new Error(`Gemini API error (${res.status}): ${detail.slice(0, 300)}`);
   }
 
-  throw new Error(`Gemini API error: ${lastError.slice(0, 300)}`);
+  const data = (await res.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text?.trim()) {
+    throw new Error("Gemini returned an empty response.");
+  }
+
+  const draft = parseGeminiJson(text);
+
+  if (!draft.title?.trim() || !draft.content?.trim()) {
+    throw new Error("Gemini JSON missing title or content.");
+  }
+
+  return {
+    title: draft.title.trim(),
+    excerpt: (draft.excerpt ?? "").trim(),
+    content: draft.content.trim(),
+    tags: Array.isArray(draft.tags) ? draft.tags.map(String) : [],
+    seo_title: (draft.seo_title ?? draft.title).trim().slice(0, 70),
+    seo_description: (draft.seo_description ?? draft.excerpt ?? "").trim().slice(0, 200),
+    image_prompt: (draft.image_prompt ?? draft.title).trim(),
+  };
 }
 
 export function pollinationsCoverUrl(imagePrompt: string): string {
