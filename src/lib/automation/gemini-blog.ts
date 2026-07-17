@@ -68,8 +68,24 @@ Return ONLY valid JSON (no markdown fences) with keys:
   });
 
   if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(`Gemini API error (${res.status}): ${detail.slice(0, 200)}`);
+    let detail = await res.text().catch(() => "");
+    try {
+      const parsed = JSON.parse(detail) as { error?: { message?: string } };
+      if (parsed.error?.message) detail = parsed.error.message;
+    } catch {
+      /* keep raw text */
+    }
+    if (res.status === 429 || /quota|RESOURCE_EXHAUSTED/i.test(detail)) {
+      throw new Error(
+        "Gemini API quota exceeded for this key. Create a new key at https://aistudio.google.com/apikey (starts with AIzaSy) or enable billing on your Google Cloud project."
+      );
+    }
+    if (res.status === 400 && /API key not valid|API_KEY_INVALID/i.test(detail)) {
+      throw new Error(
+        "Invalid Gemini API key. Create one at https://aistudio.google.com/apikey — it should start with AIzaSy."
+      );
+    }
+    throw new Error(`Gemini API error (${res.status}): ${detail.slice(0, 300)}`);
   }
 
   const data = (await res.json()) as {
